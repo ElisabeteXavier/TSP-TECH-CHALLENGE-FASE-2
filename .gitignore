@@ -1,0 +1,29 @@
+
+
+```gitignore
+# Ambiente virtual
+venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Variáveis de ambiente
+.env
+
+# Logs
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Arquivos temporários
+*.tmp
+*.swp
