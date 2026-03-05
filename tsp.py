@@ -4,10 +4,12 @@ import random
 import itertools
 from genetic_algorithm import mutate, order_crossover, generate_random_population, calculate_fitness, sort_population, default_problems
 from draw_functions import draw_paths, draw_plot, draw_cities
+from hospital_data import *
 import sys
 import numpy as np
 import pygame
 from benchmark_att48 import *
+
 
 
 # Define constant values
@@ -22,6 +24,7 @@ N_CITIES = 15
 POPULATION_SIZE = 100
 N_GENERATIONS = None
 MUTATION_PROBABILITY = 0.5
+
 
 # Define colors
 WHITE = (255, 255, 255)
@@ -39,7 +42,7 @@ BLUE = (0, 0, 255)
 # # Using Deault Problems: 10, 12 or 15
 WIDTH, HEIGHT = 800, 400
 cities_locations = default_problems[15]
-
+HOSPITAL_COORDS = cities_locations[0]
 
 # Using att48 benchmark
 # WIDTH, HEIGHT = 1500, 800
@@ -85,13 +88,15 @@ while running:
 
     screen.fill(WHITE)
 
+    city_to_id_map = {location: i for i, location in enumerate(cities_locations)}
+
     population_fitness = [calculate_fitness(
-        individual) for individual in population]
+        individual,priorities,city_to_id_map,HOSPITAL_COORDS) for individual in population]
 
     population, population_fitness = sort_population(
         population,  population_fitness)
 
-    best_fitness = calculate_fitness(population[0])
+    best_fitness = calculate_fitness(population[0],priorities,city_to_id_map,HOSPITAL_COORDS)
     best_solution = population[0]
 
     best_fitness_values.append(best_fitness)
@@ -100,7 +105,8 @@ while running:
     draw_plot(screen, list(range(len(best_fitness_values))),
               best_fitness_values, y_label="Fitness - Distance (pxls)")
 
-    draw_cities(screen, cities_locations, RED, NODE_RADIUS)
+    draw_cities(screen, cities_locations[1:], RED, NODE_RADIUS)  # cidades
+    draw_cities(screen, [HOSPITAL_COORDS], BLACK, NODE_RADIUS)   # hospital
     draw_paths(screen, best_solution, BLUE, width=3)
     draw_paths(screen, population[1], rgb_color=(128, 128, 128), width=1)
 

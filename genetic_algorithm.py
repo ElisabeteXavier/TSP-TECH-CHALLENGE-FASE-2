@@ -3,7 +3,7 @@
 import random
 import math
 import copy 
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 default_problems = {
 5: [(733, 251), (706, 87), (546, 97), (562, 49), (576, 253)],
@@ -40,24 +40,58 @@ def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float])
     """
     return math.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
+def calculate_total_distance(path, hospital):
+    
+    dist = calculate_distance(hospital, path[0])
 
-def calculate_fitness(path: List[Tuple[float, float]]) -> float:
+    for i in range(len(path) - 1):
+        dist += calculate_distance(path[i], path[i+1])
+
+    dist += calculate_distance(path[-1], hospital)
+
+    return dist
+
+
+def calculate_priority_penalty(
+    path: List[Tuple[float, float]], 
+    priorities: Dict[int, int], 
+    city_to_id_map: Dict[Tuple[float, float], int],
+    hospital_coords: Tuple[float, float]
+) -> float:
     """
-    Calculate the fitness of a given path based on the total Euclidean distance.
-
-    Parameters:
-    - path (List[Tuple[float, float]]): A list of tuples representing the path,
-      where each tuple contains the coordinates of a point.
-
-    Returns:
-    float: The total Euclidean distance of the path.
+    Calcula o componente Fp considerando a ordem de entrega após o hospital.
     """
-    distance = 0
-    n = len(path)
-    for i in range(n):
-        distance += calculate_distance(path[i], path[(i + 1) % n])
+    total_penalty: float = 0.0
+    
+    # Filtramos a rota para considerar apenas as entregas (removendo o hospital)
+    deliveries = [city for city in path if city != hospital_coords]
+    
+    # O índice 'i' representa o quanto a entrega está 'atrasada'
+    for i, city_coords in enumerate(deliveries):
+        city_id = city_to_id_map.get(city_coords)
+        if city_id is not None:
+            prio = priorities.get(city_id, 2)
+            
+            # Peso de urgência: Prioridade 0 (crítica) tem peso maior [2]
+            urgency_weight = (3 - prio) ** 2
+            
+            # Penalidade = Ordem da entrega * Peso da Urgência
+            total_penalty += (i + 1) * urgency_weight
+            
+    return total_penalty
 
-    return distance
+
+def calculate_fitness(path: List[Tuple[float, float]],priorities: Dict[int, int], 
+    city_to_id_map: Dict[Tuple[float, float], int],hospital_coords: Tuple[float, float]) -> float:
+
+    distancia = calculate_total_distance(path,hospital_coords)
+    prioridade = calculate_priority_penalty(path,priorities,city_to_id_map, hospital_coords)
+    # TODO:  prioridade = calculate_priority_penalty, capacidade_carga, 
+    # autonomia, multiplos veículos, fitness com pesos
+
+    fitness = 0.3*distancia + 0.7 * prioridade
+
+    return fitness
 
 
 def order_crossover(parent1: List[Tuple[float, float]], parent2: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
@@ -178,55 +212,55 @@ def sort_population(population: List[List[Tuple[float, float]]], fitness: List[f
     return sorted_population, sorted_fitness
 
 
-if __name__ == '__main__':
-    N_CITIES = 10
+# if __name__ == '__main__':
+#     N_CITIES = 10
     
-    POPULATION_SIZE = 100
-    N_GENERATIONS = 100
-    MUTATION_PROBABILITY = 0.3
-    cities_locations = [(random.randint(0, 100), random.randint(0, 100))
-              for _ in range(N_CITIES)]
+#     POPULATION_SIZE = 100
+#     N_GENERATIONS = 100
+#     MUTATION_PROBABILITY = 0.3
+#     cities_locations = [(random.randint(0, 100), random.randint(0, 100))
+#               for _ in range(N_CITIES)]
     
-    # CREATE INITIAL POPULATION
-    population = generate_random_population(cities_locations, POPULATION_SIZE)
+#     # CREATE INITIAL POPULATION
+#     population = generate_random_population(cities_locations, POPULATION_SIZE)
 
-    # Lists to store best fitness and generation for plotting
-    best_fitness_values = []
-    best_solutions = []
+#     # Lists to store best fitness and generation for plotting
+#     best_fitness_values = []
+#     best_solutions = []
     
-    for generation in range(N_GENERATIONS):
+#     for generation in range(N_GENERATIONS):
   
         
-        population_fitness = [calculate_fitness(individual) for individual in population]    
+#         population_fitness = [calculate_fitness(individual) for individual in population]    
         
-        population, population_fitness = sort_population(population,  population_fitness)
+#         population, population_fitness = sort_population(population,  population_fitness)
         
-        best_fitness = calculate_fitness(population[0])
-        best_solution = population[0]
+#         best_fitness = calculate_fitness(population[0])
+#         best_solution = population[0]
            
-        best_fitness_values.append(best_fitness)
-        best_solutions.append(best_solution)    
+#         best_fitness_values.append(best_fitness)
+#         best_solutions.append(best_solution)    
 
-        print(f"Generation {generation}: Best fitness = {best_fitness}")
+#         print(f"Generation {generation}: Best fitness = {best_fitness}")
 
-        new_population = [population[0]]  # Keep the best individual: ELITISM
+#         new_population = [population[0]]  # Keep the best individual: ELITISM
         
-        while len(new_population) < POPULATION_SIZE:
+#         while len(new_population) < POPULATION_SIZE:
             
-            # SELECTION
-            parent1, parent2 = random.choices(population[:10], k=2)  # Select parents from the top 10 individuals
+#             # SELECTION
+#             parent1, parent2 = random.choices(population[:10], k=2)  # Select parents from the top 10 individuals
             
-            # CROSSOVER
-            child1 = order_crossover(parent1, parent2)
+#             # CROSSOVER
+#             child1 = order_crossover(parent1, parent2)
             
-            ## MUTATION
-            child1 = mutate(child1, MUTATION_PROBABILITY)
+#             ## MUTATION
+#             child1 = mutate(child1, MUTATION_PROBABILITY)
             
-            new_population.append(child1)
+#             new_population.append(child1)
             
     
-        print('generation: ', generation)
-        population = new_population
+#         print('generation: ', generation)
+#         population = new_population
     
 
 
