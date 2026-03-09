@@ -22,7 +22,8 @@ PLOT_X_OFFSET = 450
 # GA
 N_CITIES = 15
 POPULATION_SIZE = 100
-N_GENERATIONS = None
+# Break condition: maximum number of generations 
+N_GENERATIONS = 1200
 MUTATION_PROBABILITY = 0.5
 
 
@@ -132,6 +133,12 @@ while running:
         new_population.append(child1)
 
     population = new_population
+
+
+    # for generation in range(N_GENERATIONS))
+    if N_GENERATIONS is not None and generation >= N_GENERATIONS:
+        print(f"Condição de término: atingidas {N_GENERATIONS} gerações.")
+        running = False
 
     pygame.display.flip()
     clock.tick(FPS)
