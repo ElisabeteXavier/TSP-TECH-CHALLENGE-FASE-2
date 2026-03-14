@@ -2,7 +2,7 @@ import pygame
 from pygame.locals import *
 import random
 import itertools
-from genetic_algorithm import mutate, order_crossover, generate_random_population, calculate_fitness, sort_population, default_problems
+from genetic_algorithm import mutate, order_crossover, criate_population, calculate_fitness, sort_population, default_problems
 from draw_functions import draw_paths, draw_plot, draw_cities
 from hospital_data import *
 import sys
@@ -70,7 +70,7 @@ generation_counter = itertools.count(start=1)  # Start the counter at 1
 
 # Create Initial Population
 # TODO:- use some heuristic like Nearest Neighbour our Convex Hull to initialize
-population = generate_random_population(cities_locations, POPULATION_SIZE)
+population = criate_population(POPULATION_SIZE, cities_locations, usar_hotstart=True)
 best_fitness_values = []
 best_solutions = []
 

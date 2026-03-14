@@ -1,5 +1,3 @@
-
-
 import random
 import math
 import copy 
@@ -11,6 +9,24 @@ default_problems = {
 12:[(728, 67), (560, 160), (602, 312), (712, 148), (535, 340), (720, 354), (568, 300), (629, 260), (539, 46), (634, 343), (491, 135), (768, 161)],
 15:[(512, 317), (741, 72), (552, 50), (772, 346), (637, 12), (589, 131), (732, 165), (605, 15), (730, 38), (576, 216), (589, 381), (711, 387), (563, 228), (494, 22), (787, 288)]
 }
+
+def criate_population(tamanho_pop, hospitais, usar_hotstart=True):
+    populacao = []
+    if usar_hotstart:
+        # Adiciona o indivíduo gerado pelo KNN (rota de coordenadas)
+        individuo_elite = generate_route_knn(hospitais)
+        populacao.append(individuo_elite)
+
+        # Gera os outros indivíduos de forma aleatória (rotas de coordenadas)
+        while len(populacao) < tamanho_pop:
+            rota_aleatoria = random.sample(hospitais, len(hospitais))
+            populacao.append(rota_aleatoria)
+    else:
+        # Apenas população aleatória
+        for _ in range(tamanho_pop):
+            rota_aleatoria = random.sample(hospitais, len(hospitais))
+            populacao.append(rota_aleatoria)
+    return populacao
 
 def generate_random_population(cities_location: List[Tuple[float, float]], population_size: int) -> List[List[Tuple[float, float]]]:
     """
@@ -51,6 +67,23 @@ def calculate_total_distance(path, hospital):
 
     return dist
 
+def generate_route_knn(hospitais):
+    # hospitais: lista de coordenadas extraídas de hospital_data.py
+    nao_visitados = hospitais.copy()
+    rota = []
+
+    # Começa no hospital (assumindo que o hospital é o primeiro da lista)
+    atual = nao_visitados.pop(0)
+    rota.append(atual)
+
+    while nao_visitados:
+        # encontra o ponto mais próximo de acordo com a lógica KNN
+        proximo = min(nao_visitados, key=lambda x: calculate_distance(atual, x))
+        nao_visitados.remove(proximo)
+        rota.append(proximo)
+        atual = proximo
+
+    return rota
 
 def calculate_priority_penalty(
     path: List[Tuple[float, float]], 
@@ -261,6 +294,6 @@ def sort_population(population: List[List[Tuple[float, float]]], fitness: List[f
     
 #         print('generation: ', generation)
 #         population = new_population
-    
+
 
 
