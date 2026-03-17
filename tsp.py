@@ -2,7 +2,7 @@ import pygame
 from pygame.locals import *
 import random
 import itertools
-from genetic_algorithm import mutate, order_crossover, criate_population, calculate_fitness, sort_population, default_problems
+from genetic_algorithm import mutate, order_crossover, criate_population, calculate_fitness, sort_population, default_problems, build_distance_matrix
 from draw_functions import draw_paths, draw_plot, draw_cities
 from hospital_data import *
 import sys
@@ -74,6 +74,9 @@ population = criate_population(POPULATION_SIZE, cities_locations, usar_hotstart=
 best_fitness_values = []
 best_solutions = []
 
+# Matriz de distâncias (Aula 4): calculada UMA VEZ, usada em todo o fitness
+city_to_id_map = {location: i for i, location in enumerate(cities_locations)}
+distance_matrix = build_distance_matrix(cities_locations)
 
 # Main game loop
 running = True
@@ -89,15 +92,14 @@ while running:
 
     screen.fill(WHITE)
 
-    city_to_id_map = {location: i for i, location in enumerate(cities_locations)}
-
     population_fitness = [calculate_fitness(
-        individual,priorities,city_to_id_map,HOSPITAL_COORDS) for individual in population]
+        individual, priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix
+    ) for individual in population]
 
     population, population_fitness = sort_population(
         population,  population_fitness)
 
-    best_fitness = calculate_fitness(population[0],priorities,city_to_id_map,HOSPITAL_COORDS)
+    best_fitness = calculate_fitness(population[0], priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix)
     best_solution = population[0]
 
     best_fitness_values.append(best_fitness)

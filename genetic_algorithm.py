@@ -43,6 +43,18 @@ def generate_random_population(cities_location: List[Tuple[float, float]], popul
     return [random.sample(cities_location, len(cities_location)) for _ in range(population_size)]
 
 
+# ---------------------------------------------------------------------------
+# MATRIZ DE DISTÂNCIAS (Aula 4 - Representação de Indivíduos e Codificação)
+# ---------------------------------------------------------------------------
+# Hoje: a cada avaliação de fitness calculamos a distância euclidiana entre
+# cada par de cidades consecutivas na rota. A mesma distância entre duas
+# cidades é recalculada muitas vezes (em cada indivíduo, em cada geração).
+#
+# Solução da aula: pré-calcular uma MATRIZ DE DISTÂNCIAS D[n][n] no início,
+# onde D[i][j] = distância entre cidade i e cidade j. Na hora do fitness,
+# só consultar D[i][j] em vez de recalcular. Menos operações = execução mais rápida.
+# ---------------------------------------------------------------------------
+
 def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
     """
     Calculate the Euclidean distance between two points.
@@ -56,15 +68,53 @@ def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float])
     """
     return math.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
-def calculate_total_distance(path, hospital):
-    
+
+def build_distance_matrix(cities_locations: List[Tuple[float, float]]) -> List[List[float]]:
+    """
+    Constrói a matriz de distâncias entre todas as cidades (Aula 4).
+    D[i][j] = distância euclidiana entre cidade i e cidade j.
+    Calculada UMA VEZ no início; depois só consultamos D[i][j].
+
+    Parameters:
+    - cities_locations: lista de (x, y) de cada cidade (índice = id da cidade).
+
+    Returns:
+    - Matriz n x n (list of lists), onde n = len(cities_locations).
+    """
+    n = len(cities_locations)
+    D = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = calculate_distance(cities_locations[i], cities_locations[j])
+            D[i][j] = d
+            D[j][i] = d  # matriz simétrica
+    return D
+
+
+def calculate_total_distance(
+    path: List[Tuple[float, float]],
+    hospital: Tuple[float, float],
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    distance_matrix: List[List[float]] = None,
+) -> float:
+    """
+    Distância total da rota: hospital -> path[0] -> ... -> path[-1] -> hospital.
+    Se distance_matrix e city_to_id_map forem passados, usa a matriz (mais rápido).
+    """
+    if distance_matrix is not None and city_to_id_map is not None:
+        # Aula 4: apenas consultar D[i][j], sem recalcular
+        hid = city_to_id_map[hospital]
+        ids = [city_to_id_map[coord] for coord in path]
+        dist = distance_matrix[hid][ids[0]]
+        for i in range(len(ids) - 1):
+            dist += distance_matrix[ids[i]][ids[i + 1]]
+        dist += distance_matrix[ids[-1]][hid]
+        return dist
+    # Fallback: cálculo pela distância euclidiana (comportamento antigo)
     dist = calculate_distance(hospital, path[0])
-
     for i in range(len(path) - 1):
-        dist += calculate_distance(path[i], path[i+1])
-
+        dist += calculate_distance(path[i], path[i + 1])
     dist += calculate_distance(path[-1], hospital)
-
     return dist
 
 def generate_route_knn(hospitais):
@@ -114,11 +164,20 @@ def calculate_priority_penalty(
     return total_penalty
 
 
-def calculate_fitness(path: List[Tuple[float, float]],priorities: Dict[int, int], 
-    city_to_id_map: Dict[Tuple[float, float], int],hospital_coords: Tuple[float, float]) -> float:
-
-    distancia = calculate_total_distance(path,hospital_coords)
-    prioridade = calculate_priority_penalty(path,priorities,city_to_id_map, hospital_coords)
+def calculate_fitness(
+    path: List[Tuple[float, float]],
+    priorities: Dict[int, int],
+    city_to_id_map: Dict[Tuple[float, float], int],
+    hospital_coords: Tuple[float, float],
+    distance_matrix: List[List[float]] = None,
+) -> float:
+    """Fitness = 0.3*distância + 0.7*penalidade_prioridade. Usa matriz de distâncias se fornecida."""
+    distancia = calculate_total_distance(
+        path, hospital_coords,
+        city_to_id_map=city_to_id_map,
+        distance_matrix=distance_matrix,
+    )
+    prioridade = calculate_priority_penalty(path, priorities, city_to_id_map, hospital_coords)
     # TODO:  prioridade = calculate_priority_penalty, capacidade_carga, 
     # autonomia, multiplos veículos, fitness com pesos
 
