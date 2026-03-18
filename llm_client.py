@@ -137,17 +137,36 @@ def llm_to_config(user_text: str, provider: Optional[str] = None) -> Dict[str, A
     Retorna SOMENTE dict (config) no schema esperado.
     """
     prompt = f"""
-Você é um gerador de configurações para um Algoritmo Genético (AG) de roteirização.
-Sua tarefa: dado o objetivo do usuário, retorne APENAS um JSON válido seguindo exatamente este schema:
+Você é um tradutor de intenção -> configuração de Algoritmo Genético (AG) para roteirização.
+Retorne APENAS um JSON válido no schema abaixo (campos podem ser parciais; defaults serão aplicados no código):
 
 {json.dumps(CONFIG_SCHEMA_EXAMPLE, ensure_ascii=False, indent=2)}
 
-Regras:
+Regras de saída (obrigatórias):
 - Responda SOMENTE com JSON (sem markdown, sem explicação).
-- Sempre inclua todos os campos do schema.
-- weights.* devem somar aproximadamente 1.0 (pode ter pequenas diferenças por arredondamento).
+- Não invente campos fora do schema.
 - mutation_prob deve estar entre 0 e 1.
-- top_for_selection deve ser >= 2.
+- top_for_selection >= 2.
+- weights.* devem ser números >= 0.
+- Se fornecer weights, prefira que somem ~ 1.0.
+- NÃO zere explicitamente pesos (0.0) a menos que o usuário peça para ignorar aquele critério.
+
+Guia de mapeamento (use como heurística):
+- “mais rápida / menor distância” -> aumentar weights.distance, reduzir weights.priority (mas não zerar).
+- “priorizar urgência / crítico primeiro” -> aumentar weights.priority.
+- “carro aguenta pouco / capacidade baixa” -> reduzir vehicle_capacity e aumentar weights.capacity.
+- “mais exploração” -> aumentar mutation_prob e n_generations; diminuir top_for_selection (mantendo >=2).
+- “mais estabilidade / menos aleatório” -> diminuir mutation_prob; aumentar top_for_selection.
+
+Exemplos:
+Usuário: "Quero priorizar urgência mais que distância"
+Saída (exemplo): {{"weights": {{"distance": 0.2, "priority": 0.7, "capacity": 0.1}}, "mutation_prob": 0.2, "n_generations": 80}}
+
+Usuário: "Meu carro aguenta pouco, mas ainda quero uma rota curta"
+Saída (exemplo): {{"vehicle_capacity": 10, "weights": {{"distance": 0.4, "priority": 0.2, "capacity": 0.4}}}}
+
+Usuário: "Quero mais exploração, tenta achar soluções diferentes"
+Saída (exemplo): {{"mutation_prob": 0.45, "n_generations": 120, "top_for_selection": 6, "weights": {{"distance": 0.3, "priority": 0.5, "capacity": 0.2}}}}
 
 Objetivo do usuário:
 {user_text}
@@ -156,6 +175,13 @@ Objetivo do usuário:
     raw = call_llm(prompt, provider=provider)
     cfg = _extract_json_object(raw)
     validate_config_shape(cfg)
+
+    # Pós-processamento leve: evita pesos zerados explicitamente.
+    # (O normalize_config ainda faz clamp/normalização no headless.)
+    if isinstance(cfg.get("weights"), dict):
+        for k in ("distance", "priority", "capacity"):
+            if k in cfg["weights"] and cfg["weights"][k] == 0:
+                cfg["weights"][k] = 0.01
     return cfg
 
 
