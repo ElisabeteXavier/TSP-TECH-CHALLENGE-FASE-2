@@ -204,3 +204,44 @@ Resultado (JSON):
 
     return call_llm(prompt, provider=provider).strip()
 
+
+def llm_suggest_tuned_config(
+    *,
+    current_config: Dict[str, Any],
+    last_result: Dict[str, Any],
+    provider: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Etapa 5 (extra): sugere ajustes de hyperparâmetros do AG baseado no resultado anterior.
+    Retorna JSON (parcial) no schema de config.
+    """
+    prompt = f"""
+Você é um assistente de auto-tuning para um Algoritmo Genético (AG) de roteirização.
+Você receberá a config atual e o resultado da execução (inclui histórico do melhor fitness por geração).
+Sua tarefa é sugerir UMA nova configuração (JSON) para a próxima execução.
+
+Schema permitido (JSON, campos opcionais):
+{json.dumps(CONFIG_SCHEMA_EXAMPLE, ensure_ascii=False, indent=2)}
+
+Regras IMPORTANTES:
+- Responda SOMENTE com JSON (sem markdown, sem explicação).
+- Retorne somente campos que deseja alterar (pode ser parcial).
+- mutation_prob deve estar entre 0 e 1.
+- top_for_selection >= 2.
+- weights.* >= 0. Se fornecer weights, prefira que somem ~ 1.0 (o código normaliza).
+- Seja conservador: ajuste poucos parâmetros por vez (2-4 mudanças no máximo).
+- Se o fitness estagnou cedo (pouca melhora por muitas gerações), aumente exploração (mutation_prob e/ou n_generations).
+- Se o fitness oscila muito (piorando e melhorando), aumente estabilidade (top_for_selection e/ou reduza mutation_prob).
+
+Config atual:
+{json.dumps(current_config, ensure_ascii=False, indent=2)}
+
+Resultado anterior:
+{json.dumps(last_result, ensure_ascii=False, indent=2)}
+""".strip()
+
+    raw = call_llm(prompt, provider=provider)
+    cfg = _extract_json_object(raw)
+    validate_config_shape(cfg)
+    return cfg
+

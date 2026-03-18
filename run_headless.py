@@ -16,7 +16,7 @@ from genetic_algorithm import (
     calculate_total_distance, calculate_priority_penalty, calculate_capacity_penalty
 )
 from hospital_data import priorities, demands
-from llm_client import llm_to_config, llm_to_explanation
+from llm_client import llm_to_config, llm_to_explanation, llm_suggest_tuned_config
 from schemas import DEFAULT_CONFIG
 
 
@@ -220,6 +220,7 @@ def main() -> None:
     parser.add_argument("--objective", type=str, default=None, help="Objetivo em linguagem natural (usa LLM).")
     parser.add_argument("--explain", action="store_true", help="Gerar explicação humana via LLM ao final.")
     parser.add_argument("--llm-provider", type=str, default=None, help="Provider do LLM (ex.: openai).")
+    parser.add_argument("--auto-tune", type=int, default=0, help="N iterações extras de auto-tuning via LLM (opcional).")
     args = parser.parse_args()
 
     user_config = None
@@ -233,7 +234,66 @@ def main() -> None:
         with open(args.config_json, "r", encoding="utf-8") as f:
             user_config = json.load(f)
 
-    result = run_ga_headless(user_config or {})
+    base_config = user_config or {}
+    base_result = run_ga_headless(base_config)
+
+    final_result = base_result
+
+    if args.auto_tune and args.auto_tune > 0:
+        tuning = {
+            "enabled": True,
+            "n_iterations": int(args.auto_tune),
+            "iterations": [],
+        }
+        current_cfg_used = final_result.get("config_used", normalize_config(base_config))
+        best_fitness = float(final_result["metrics"]["fitness_final"])
+
+        for i in range(1, int(args.auto_tune) + 1):
+            try:
+                suggested_partial = llm_suggest_tuned_config(
+                    current_config=current_cfg_used,
+                    last_result=final_result,
+                    provider=args.llm_provider,
+                )
+            except Exception as e:
+                tuning["iterations"].append(
+                    {"iteration": i, "status": "failed", "error": str(e)}
+                )
+                break
+
+            merged_next = dict(current_cfg_used)
+            # merge superficial + weights
+            for k, v in suggested_partial.items():
+                if k == "weights" and isinstance(v, dict):
+                    w = dict(merged_next.get("weights") or {})
+                    w.update(v)
+                    merged_next["weights"] = w
+                else:
+                    merged_next[k] = v
+
+            next_result = run_ga_headless(merged_next)
+            next_fitness = float(next_result["metrics"]["fitness_final"])
+
+            tuning["iterations"].append(
+                {
+                    "iteration": i,
+                    "status": "ok",
+                    "suggested_partial": suggested_partial,
+                    "config_used": next_result.get("config_used"),
+                    "fitness_final": next_fitness,
+                }
+            )
+
+            current_cfg_used = next_result.get("config_used", normalize_config(merged_next))
+            if next_fitness < best_fitness:
+                best_fitness = next_fitness
+                final_result = next_result
+
+        # anexa tuning ao resultado final (mantém saída estruturada)
+        final_result = dict(final_result)
+        final_result["auto_tune"] = tuning
+
+    result = final_result
 
     if args.out_json:
         out_path = args.out_json
