@@ -93,13 +93,17 @@ while running:
     screen.fill(WHITE)
 
     population_fitness = [calculate_fitness(
-        individual, priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix
+        individual, priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix,
+        demands=demands, vehicle_capacity=VEHICLE_CAPACITY
     ) for individual in population]
 
     population, population_fitness = sort_population(
         population,  population_fitness)
 
-    best_fitness = calculate_fitness(population[0], priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix)
+    best_fitness = calculate_fitness(
+        population[0], priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix,
+        demands=demands, vehicle_capacity=VEHICLE_CAPACITY
+    )
     best_solution = population[0]
 
     best_fitness_values.append(best_fitness)

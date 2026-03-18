@@ -43,18 +43,6 @@ def generate_random_population(cities_location: List[Tuple[float, float]], popul
     return [random.sample(cities_location, len(cities_location)) for _ in range(population_size)]
 
 
-# ---------------------------------------------------------------------------
-# MATRIZ DE DISTÂNCIAS (Aula 4 - Representação de Indivíduos e Codificação)
-# ---------------------------------------------------------------------------
-# Hoje: a cada avaliação de fitness calculamos a distância euclidiana entre
-# cada par de cidades consecutivas na rota. A mesma distância entre duas
-# cidades é recalculada muitas vezes (em cada indivíduo, em cada geração).
-#
-# Solução da aula: pré-calcular uma MATRIZ DE DISTÂNCIAS D[n][n] no início,
-# onde D[i][j] = distância entre cidade i e cidade j. Na hora do fitness,
-# só consultar D[i][j] em vez de recalcular. Menos operações = execução mais rápida.
-# ---------------------------------------------------------------------------
-
 def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
     """
     Calculate the Euclidean distance between two points.
@@ -164,24 +152,62 @@ def calculate_priority_penalty(
     return total_penalty
 
 
+def calculate_capacity_penalty(
+    path: List[Tuple[float, float]],
+    demands: Dict[int, int],
+    city_to_id_map: Dict[Tuple[float, float], int],
+    hospital_coords: Tuple[float, float],
+    vehicle_capacity: float,
+) -> float:
+    """
+    Penalidade por estourar a capacidade do veículo (não matar a solução).
+    Carga total da rota = soma das demandas dos pontos da rota.
+    Retorna 0 se carga_total <= vehicle_capacity; senão retorna o excesso (carga_total - vehicle_capacity).
+    """
+    deliveries = [c for c in path if c != hospital_coords]
+    carga_total = 0.0
+    for city_coords in deliveries:
+        cid = city_to_id_map.get(city_coords)
+        if cid is not None:
+            carga_total += demands.get(cid, 0)
+    excesso = carga_total - vehicle_capacity
+    return max(0.0, excesso)
+
+
 def calculate_fitness(
     path: List[Tuple[float, float]],
     priorities: Dict[int, int],
     city_to_id_map: Dict[Tuple[float, float], int],
     hospital_coords: Tuple[float, float],
     distance_matrix: List[List[float]] = None,
+    demands: Dict[int, int] = None,
+    vehicle_capacity: float = None,
+    weights: Dict[str, float] = None,
 ) -> float:
-    """Fitness = 0.3*distância + 0.7*penalidade_prioridade. Usa matriz de distâncias se fornecida."""
+    """
+    Fitness = w_dist*distância + w_prio*prioridade + w_cap*penalidade_capacidade.
+    Se demands e vehicle_capacity não forem passados, usa só distância e prioridade.
+    """
+    if weights is None:
+        weights = {}
+    w_dist = float(weights.get("distance", 0.3))
+    w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
+    w_cap = float(weights.get("capacity", 0.2))
+
     distancia = calculate_total_distance(
         path, hospital_coords,
         city_to_id_map=city_to_id_map,
         distance_matrix=distance_matrix,
     )
     prioridade = calculate_priority_penalty(path, priorities, city_to_id_map, hospital_coords)
-    # TODO:  prioridade = calculate_priority_penalty, capacidade_carga, 
-    # autonomia, multiplos veículos, fitness com pesos
 
-    fitness = 0.3*distancia + 0.7 * prioridade
+    if demands is not None and vehicle_capacity is not None:
+        capacidade_penalty = calculate_capacity_penalty(
+            path, demands, city_to_id_map, hospital_coords, vehicle_capacity
+        )
+        fitness = w_dist * distancia + w_prio * prioridade + w_cap * capacidade_penalty
+    else:
+        fitness = w_dist * distancia + w_prio * prioridade
 
     return fitness
 

@@ -1,0 +1,13 @@
+{
+  "population_size": 100,
+  "n_generations": 80,
+  "mutation_prob": 0.3,
+  "top_for_selection": 10,
+  "vehicle_capacity": 15,
+  "weights": {
+    "distance": 0.3,
+    "priority": 0.5,
+    "capacity": 0.2
+  }
+}
+
