@@ -3,15 +3,7 @@ import os
 import re
 from typing import Any, Dict, Optional
 
-
-CONFIG_SCHEMA_EXAMPLE: Dict[str, Any] = {
-    "population_size": 100,
-    "n_generations": 80,
-    "mutation_prob": 0.3,
-    "top_for_selection": 10,
-    "vehicle_capacity": 15,
-    "weights": {"distance": 0.3, "priority": 0.5, "capacity": 0.2},
-}
+from schemas import CONFIG_SCHEMA_EXAMPLE
 
 
 def validate_config_shape(cfg: Dict[str, Any]) -> None:
@@ -22,17 +14,10 @@ def validate_config_shape(cfg: Dict[str, Any]) -> None:
     if not isinstance(cfg, dict):
         raise ValueError("Config do LLM precisa ser um objeto JSON (dict).")
 
-    required = ["population_size", "n_generations", "mutation_prob", "top_for_selection", "vehicle_capacity", "weights"]
-    missing = [k for k in required if k not in cfg]
-    if missing:
-        raise ValueError(f"Config do LLM faltando campos obrigatórios: {missing}")
-
-    if not isinstance(cfg.get("weights"), dict):
-        raise ValueError("Campo 'weights' deve ser um objeto.")
-
-    for k in ["distance", "priority", "capacity"]:
-        if k not in cfg["weights"]:
-            raise ValueError(f"weights faltando '{k}'")
+    # Etapa 3: o LLM pode devolver JSON parcial; o headless aplica defaults.
+    # Aqui validamos apenas que, se 'weights' vier, tem shape de dict.
+    if "weights" in cfg and not isinstance(cfg.get("weights"), dict):
+        raise ValueError("Campo 'weights' deve ser um objeto quando presente.")
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -181,6 +166,11 @@ def llm_to_explanation(result_dict: Dict[str, Any], provider: Optional[str] = No
     prompt = f"""
 Explique o resultado abaixo em português simples, como se estivesse explicando para uma criança.
 Seja curto (6 a 10 linhas), sem termos técnicos pesados.
+
+Regras IMPORTANTES:
+- Não diga "quilômetros", "km" ou qualquer unidade do mundo real.
+- A distância aqui é em "unidades do mapa" (pense em pixels/coordenadas), então use o termo "unidades".
+- Não invente fatos que não estejam no JSON.
 
 Resultado (JSON):
 {json.dumps(result_dict, ensure_ascii=False, indent=2)}

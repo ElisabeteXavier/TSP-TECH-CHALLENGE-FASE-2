@@ -15,18 +15,10 @@ from genetic_algorithm import (
     calculate_fitness, sort_population, default_problems, build_distance_matrix,
     calculate_total_distance, calculate_priority_penalty, calculate_capacity_penalty
 )
-from hospital_data import priorities, demands, VEHICLE_CAPACITY
+from hospital_data import priorities, demands
 from llm_client import llm_to_config, llm_to_explanation
+from schemas import DEFAULT_CONFIG
 
-
-DEFAULT_CONFIG: Dict[str, Any] = {
-    "population_size": 100,
-    "n_generations": 50,
-    "mutation_prob": 0.5,
-    "top_for_selection": 10,
-    "vehicle_capacity": VEHICLE_CAPACITY,
-    "weights": {"distance": 0.3, "priority": 0.5, "capacity": 0.2},
-}
 
 def load_dotenv_if_present(dotenv_path: str = ".env") -> None:
     """
@@ -80,11 +72,30 @@ def normalize_config(user_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     cfg["vehicle_capacity"] = _as_float(cfg.get("vehicle_capacity"), DEFAULT_CONFIG["vehicle_capacity"])
 
     weights = cfg.get("weights") if isinstance(cfg.get("weights"), dict) else {}
-    cfg["weights"] = {
-        "distance": _as_float(weights.get("distance"), DEFAULT_CONFIG["weights"]["distance"]),
-        "priority": _as_float(weights.get("priority"), DEFAULT_CONFIG["weights"]["priority"]),
-        "capacity": _as_float(weights.get("capacity"), DEFAULT_CONFIG["weights"]["capacity"]),
-    }
+
+    # Clamp defensivo + normalização (soma ~ 1.0).
+    w_dist = _as_float(weights.get("distance"), DEFAULT_CONFIG["weights"]["distance"])
+    w_prio = _as_float(weights.get("priority"), DEFAULT_CONFIG["weights"]["priority"])
+    w_cap = _as_float(weights.get("capacity"), DEFAULT_CONFIG["weights"]["capacity"])
+
+    def _clamp01(v: float) -> float:
+        if v != v:  # NaN
+            return 0.0
+        return min(1.0, max(0.0, float(v)))
+
+    w_dist = _clamp01(w_dist)
+    w_prio = _clamp01(w_prio)
+    w_cap = _clamp01(w_cap)
+
+    s = w_dist + w_prio + w_cap
+    if s <= 0.0:
+        cfg["weights"] = dict(DEFAULT_CONFIG["weights"])
+    else:
+        cfg["weights"] = {
+            "distance": w_dist / s,
+            "priority": w_prio / s,
+            "capacity": w_cap / s,
+        }
 
     # Ajuste defensivo: top_for_selection não pode exceder população
     cfg["top_for_selection"] = min(cfg["top_for_selection"], cfg["population_size"])
