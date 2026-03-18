@@ -14,6 +14,27 @@ CONFIG_SCHEMA_EXAMPLE: Dict[str, Any] = {
 }
 
 
+def validate_config_shape(cfg: Dict[str, Any]) -> None:
+    """
+    Valida apenas o "shape" (campos e tipos básicos) da configuração retornada pelo LLM.
+    A normalização (defaults/limites) fica com o run_headless.normalize_config.
+    """
+    if not isinstance(cfg, dict):
+        raise ValueError("Config do LLM precisa ser um objeto JSON (dict).")
+
+    required = ["population_size", "n_generations", "mutation_prob", "top_for_selection", "vehicle_capacity", "weights"]
+    missing = [k for k in required if k not in cfg]
+    if missing:
+        raise ValueError(f"Config do LLM faltando campos obrigatórios: {missing}")
+
+    if not isinstance(cfg.get("weights"), dict):
+        raise ValueError("Campo 'weights' deve ser um objeto.")
+
+    for k in ["distance", "priority", "capacity"]:
+        if k not in cfg["weights"]:
+            raise ValueError(f"weights faltando '{k}'")
+
+
 def _extract_json_object(text: str) -> Dict[str, Any]:
     """
     Extrai o primeiro objeto JSON de uma resposta que pode conter texto extra.
@@ -29,18 +50,18 @@ def _extract_json_object(text: str) -> Dict[str, Any]:
     return json.loads(m.group(0))
 
 
-def _openai_chat_completion(prompt: str, model: str) -> str:
+def _openai_compatible_chat_completion(*, prompt: str, model: str, api_key: str, base_url: str) -> str:
     """
-    Implementação sem dependência externa (usa urllib) para OpenAI Chat Completions.
-    Requer OPENAI_API_KEY.
+    Implementação sem dependência externa (usa urllib) para endpoints compatíveis com OpenAI.
+    Ex.: OpenAI e Groq (OpenAI-compatible).
     """
+    import ssl
     import urllib.request
 
-    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError("Defina OPENAI_API_KEY no ambiente para usar OpenAI.")
+        raise RuntimeError("API key ausente para o provider configurado.")
 
-    url = "https://api.openai.com/v1/chat/completions"
+    url = base_url.rstrip("/") + "/chat/completions"
     payload = {
         "model": model,
         "messages": [
@@ -56,11 +77,36 @@ def _openai_chat_completion(prompt: str, model: str) -> str:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Alguns provedores/WAFs bloqueiam requests sem User-Agent.
+            "User-Agent": "fiap-tech-challenge/llm-client (python urllib)",
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        body = resp.read().decode("utf-8")
+
+    # macOS às vezes não tem o bundle de CA disponível para o Python instalado.
+    # Se certifi estiver presente, usamos o CA bundle dele para evitar CERTIFICATE_VERIFY_FAILED.
+    context = None
+    try:
+        import certifi  # type: ignore
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        context = ssl.create_default_context()
+
+    import urllib.error
+
+    try:
+        with urllib.request.urlopen(req, timeout=60, context=context) as resp:
+            body = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            err_body = "<sem corpo de erro>"
+        raise RuntimeError(f"HTTP {e.code} ao chamar LLM: {err_body}") from None
+
     parsed = json.loads(body)
     return parsed["choices"][0]["message"]["content"]
 
@@ -75,9 +121,29 @@ def call_llm(prompt: str, provider: Optional[str] = None) -> str:
 
     if provider == "openai":
         model = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
-        return _openai_chat_completion(prompt, model=model)
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("Defina OPENAI_API_KEY no ambiente para usar OpenAI.")
+        return _openai_compatible_chat_completion(
+            prompt=prompt,
+            model=model,
+            api_key=api_key,
+            base_url="https://api.openai.com/v1",
+        )
 
-    raise RuntimeError(f"Provider LLM não suportado: {provider}. Use LLM_PROVIDER=openai.")
+    if provider == "groq":
+        model = os.getenv("GROQ_MODEL") or "llama-3.1-8b-instant"
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("Defina GROQ_API_KEY no ambiente para usar Groq.")
+        return _openai_compatible_chat_completion(
+            prompt=prompt,
+            model=model,
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+
+    raise RuntimeError(f"Provider LLM não suportado: {provider}. Use LLM_PROVIDER=groq|openai.")
 
 
 def llm_to_config(user_text: str, provider: Optional[str] = None) -> Dict[str, Any]:
@@ -103,7 +169,9 @@ Objetivo do usuário:
 """.strip()
 
     raw = call_llm(prompt, provider=provider)
-    return _extract_json_object(raw)
+    cfg = _extract_json_object(raw)
+    validate_config_shape(cfg)
+    return cfg
 
 
 def llm_to_explanation(result_dict: Dict[str, Any], provider: Optional[str] = None) -> str:

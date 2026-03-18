@@ -28,6 +28,31 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "weights": {"distance": 0.3, "priority": 0.5, "capacity": 0.2},
 }
 
+def load_dotenv_if_present(dotenv_path: str = ".env") -> None:
+    """
+    Carrega variáveis de ambiente de um arquivo .env simples (KEY=VALUE),
+    apenas se a variável ainda não estiver definida no ambiente.
+    Não requer dependências externas.
+    """
+    try:
+        if not os.path.exists(dotenv_path):
+            return
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except Exception:
+        # Carregamento de .env é "best-effort"
+        return
+
 
 def _as_float(x: Any, default: float) -> float:
     try:
@@ -175,16 +200,24 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
+    # Permite usar .env sem precisar exportar no shell.
+    load_dotenv_if_present(".env")
+
     parser = argparse.ArgumentParser(description="Rodar AG em modo headless com config estruturada.")
     parser.add_argument("--config-json", type=str, default=None, help="Caminho para um JSON de configuração.")
     parser.add_argument("--out-json", type=str, default=None, help="Caminho para salvar o resultado em JSON.")
     parser.add_argument("--objective", type=str, default=None, help="Objetivo em linguagem natural (usa LLM).")
     parser.add_argument("--explain", action="store_true", help="Gerar explicação humana via LLM ao final.")
+    parser.add_argument("--llm-provider", type=str, default=None, help="Provider do LLM (ex.: openai).")
     args = parser.parse_args()
 
     user_config = None
     if args.objective:
-        user_config = llm_to_config(args.objective)
+        try:
+            user_config = llm_to_config(args.objective, provider=args.llm_provider)
+        except Exception as e:
+            print("Erro ao gerar config via LLM. Verifique a chave/ambiente e o objective.")
+            raise SystemExit(str(e))
     elif args.config_json:
         with open(args.config_json, "r", encoding="utf-8") as f:
             user_config = json.load(f)
@@ -200,7 +233,7 @@ def main() -> None:
 
     if args.explain:
         try:
-            explanation = llm_to_explanation(result)
+            explanation = llm_to_explanation(result, provider=args.llm_provider)
             print("\n" + "-" * 60)
             print("Explicação (LLM)")
             print("-" * 60)
