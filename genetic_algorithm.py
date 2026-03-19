@@ -1,7 +1,7 @@
 import random
 import math
 import copy 
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 
 default_problems = {
 5: [(733, 251), (706, 87), (546, 97), (562, 49), (576, 253)],
@@ -174,6 +174,170 @@ def calculate_capacity_penalty(
     return max(0.0, excesso)
 
 
+def _median(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(s[mid])
+    return float((s[mid - 1] + s[mid]) / 2.0)
+
+
+def _std(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    var = sum((v - mean) ** 2 for v in values) / len(values)
+    return math.sqrt(var)
+
+
+def split_deliveries_two_vehicles(
+    path: List[Tuple[float, float]],
+    depot_coords: Tuple[float, float],
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], Dict[str, Any]]:
+    """
+    Separa entregas em 2 veículos usando corte dinâmico:
+    - escolhe eixo com maior dispersão (std de dx vs dy)
+    - threshold = mediana no eixo escolhido
+    """
+    deliveries = [p for p in path if p != depot_coords]
+
+    if not deliveries:
+        return [], [], {"axis": "x", "threshold": 0.0, "fallback": False}
+
+    dx = [p[0] - depot_coords[0] for p in deliveries]
+    dy = [p[1] - depot_coords[1] for p in deliveries]
+
+    use_x = _std(dx) >= _std(dy)
+    axis = "x" if use_x else "y"
+
+    axis_values = [p[0] if use_x else p[1] for p in deliveries]
+    threshold = _median(axis_values)
+
+    vehicle_1 = []
+    vehicle_2 = []
+
+    for p in deliveries:
+        v = p[0] if use_x else p[1]
+        if v <= threshold:
+            vehicle_1.append(p)
+        else:
+            vehicle_2.append(p)
+
+    # fallback para evitar grupo vazio (especialmente em casos degenerados)
+    fallback = False
+    if len(vehicle_1) == 0 or len(vehicle_2) == 0:
+        fallback = True
+        vehicle_1, vehicle_2 = [], []
+        for i, p in enumerate(deliveries):
+            if i % 2 == 0:
+                vehicle_1.append(p)
+            else:
+                vehicle_2.append(p)
+
+    return vehicle_1, vehicle_2, {"axis": axis, "threshold": threshold, "fallback": fallback}
+
+
+def evaluate_two_vehicle_solution(
+    path: List[Tuple[float, float]],
+    priorities: Dict[int, int],
+    city_to_id_map: Dict[Tuple[float, float], int],
+    depot_coords: Tuple[float, float],
+    distance_matrix: List[List[float]] = None,
+    demands: Dict[int, int] = None,
+    vehicle_capacity: float = None,
+    weights: Dict[str, float] = None,
+) -> Dict[str, Any]:
+    if weights is None:
+        weights = {}
+
+    w_dist = float(weights.get("distance", 0.3))
+    w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
+    w_cap = float(weights.get("capacity", 0.2))
+
+    route_v1, route_v2, split_info = split_deliveries_two_vehicles(path, depot_coords)
+
+    dist_v1 = calculate_total_distance(
+        route_v1, depot_coords, city_to_id_map=city_to_id_map, distance_matrix=distance_matrix
+    ) if route_v1 else 0.0
+    dist_v2 = calculate_total_distance(
+        route_v2, depot_coords, city_to_id_map=city_to_id_map, distance_matrix=distance_matrix
+    ) if route_v2 else 0.0
+
+    prio_v1 = calculate_priority_penalty(route_v1, priorities, city_to_id_map, depot_coords) if route_v1 else 0.0
+    prio_v2 = calculate_priority_penalty(route_v2, priorities, city_to_id_map, depot_coords) if route_v2 else 0.0
+
+    if demands is not None and vehicle_capacity is not None:
+        cap_v1 = calculate_capacity_penalty(route_v1, demands, city_to_id_map, depot_coords, vehicle_capacity) if route_v1 else 0.0
+        cap_v2 = calculate_capacity_penalty(route_v2, demands, city_to_id_map, depot_coords, vehicle_capacity) if route_v2 else 0.0
+    else:
+        cap_v1 = 0.0
+        cap_v2 = 0.0
+
+    total_distance = float(dist_v1 + dist_v2)
+    total_priority_penalty = float(prio_v1 + prio_v2)
+    total_capacity_penalty = float(cap_v1 + cap_v2)
+
+    if demands is not None and vehicle_capacity is not None:
+        fitness = w_dist * total_distance + w_prio * total_priority_penalty + w_cap * total_capacity_penalty
+    else:
+        fitness = w_dist * total_distance + w_prio * total_priority_penalty
+
+    return {
+        "fitness": float(fitness),
+        "split": split_info,
+        "routes": {
+            "vehicle_1": route_v1,
+            "vehicle_2": route_v2,
+        },
+        "metrics": {
+            "total_distance": total_distance,
+            "priority_penalty": total_priority_penalty,
+            "capacity_penalty": total_capacity_penalty,
+            "distance_v1": float(dist_v1),
+            "distance_v2": float(dist_v2),
+        },
+    }
+
+# def calculate_fitness(
+#     path: List[Tuple[float, float]],
+#     priorities: Dict[int, int],
+#     city_to_id_map: Dict[Tuple[float, float], int],
+#     hospital_coords: Tuple[float, float],
+#     distance_matrix: List[List[float]] = None,
+#     demands: Dict[int, int] = None,
+#     vehicle_capacity: float = None,
+#     weights: Dict[str, float] = None,
+# ) -> float:
+#     """
+#     Fitness = w_dist*distância + w_prio*prioridade + w_cap*penalidade_capacidade.
+#     Se demands e vehicle_capacity não forem passados, usa só distância e prioridade.
+#     """
+#     if weights is None:
+#         weights = {}
+#     w_dist = float(weights.get("distance", 0.3))
+#     w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
+#     w_cap = float(weights.get("capacity", 0.2))
+
+#     distancia = calculate_total_distance(
+#         path, hospital_coords,
+#         city_to_id_map=city_to_id_map,
+#         distance_matrix=distance_matrix,
+#     )
+#     prioridade = calculate_priority_penalty(path, priorities, city_to_id_map, hospital_coords)
+
+#     if demands is not None and vehicle_capacity is not None:
+#         capacidade_penalty = calculate_capacity_penalty(
+#             path, demands, city_to_id_map, hospital_coords, vehicle_capacity
+#         )
+#         fitness = w_dist * distancia + w_prio * prioridade + w_cap * capacidade_penalty
+#     else:
+#         fitness = w_dist * distancia + w_prio * prioridade
+
+#     return fitness
+
 def calculate_fitness(
     path: List[Tuple[float, float]],
     priorities: Dict[int, int],
@@ -185,31 +349,21 @@ def calculate_fitness(
     weights: Dict[str, float] = None,
 ) -> float:
     """
-    Fitness = w_dist*distância + w_prio*prioridade + w_cap*penalidade_capacidade.
-    Se demands e vehicle_capacity não forem passados, usa só distância e prioridade.
+    Fitness para 2 veículos:
+    - separa entregas em 2 rotas via corte dinâmico (x ou y)
+    - soma distância/prioridade/capacidade dos dois veículos
     """
-    if weights is None:
-        weights = {}
-    w_dist = float(weights.get("distance", 0.3))
-    w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
-    w_cap = float(weights.get("capacity", 0.2))
-
-    distancia = calculate_total_distance(
-        path, hospital_coords,
+    evaluated = evaluate_two_vehicle_solution(
+        path=path,
+        priorities=priorities,
         city_to_id_map=city_to_id_map,
+        depot_coords=hospital_coords,
         distance_matrix=distance_matrix,
+        demands=demands,
+        vehicle_capacity=vehicle_capacity,
+        weights=weights,
     )
-    prioridade = calculate_priority_penalty(path, priorities, city_to_id_map, hospital_coords)
-
-    if demands is not None and vehicle_capacity is not None:
-        capacidade_penalty = calculate_capacity_penalty(
-            path, demands, city_to_id_map, hospital_coords, vehicle_capacity
-        )
-        fitness = w_dist * distancia + w_prio * prioridade + w_cap * capacidade_penalty
-    else:
-        fitness = w_dist * distancia + w_prio * prioridade
-
-    return fitness
+    return float(evaluated["fitness"])
 
 
 def order_crossover(parent1: List[Tuple[float, float]], parent2: List[Tuple[float, float]]) -> List[Tuple[float, float]]:

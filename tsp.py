@@ -2,7 +2,10 @@ import pygame
 from pygame.locals import *
 import random
 import itertools
-from genetic_algorithm import mutate, order_crossover, criate_population, calculate_fitness, sort_population, default_problems, build_distance_matrix
+from genetic_algorithm import (
+    mutate, order_crossover, criate_population, calculate_fitness,
+    sort_population, default_problems, build_distance_matrix, split_deliveries_two_vehicles
+)
 from draw_functions import draw_paths, draw_plot, draw_cities
 from hospital_data import *
 import sys
@@ -32,6 +35,7 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
+GREEN = (0, 160, 0)
 
 
 # Initialize problem
@@ -112,10 +116,24 @@ while running:
     draw_plot(screen, list(range(len(best_fitness_values))),
               best_fitness_values, y_label="Fitness - Distance (pxls)")
 
-    draw_cities(screen, cities_locations[1:], RED, NODE_RADIUS)  # cidades
-    draw_cities(screen, [HOSPITAL_COORDS], BLACK, NODE_RADIUS)   # hospital
-    draw_paths(screen, best_solution, BLUE, width=3)
-    draw_paths(screen, population[1], rgb_color=(128, 128, 128), width=1)
+    draw_cities(screen, cities_locations[1:], RED, NODE_RADIUS)  # entregas
+    draw_cities(screen, [HOSPITAL_COORDS], BLACK, NODE_RADIUS)   # depósito/hospital
+
+    route_v1, route_v2, split_info = split_deliveries_two_vehicles(best_solution, HOSPITAL_COORDS)
+
+    path_v1 = [HOSPITAL_COORDS] + route_v1
+    path_v2 = [HOSPITAL_COORDS] + route_v2
+
+    if len(path_v1) >= 2:
+        draw_paths(screen, path_v1, BLUE, width=3)
+
+    if len(path_v2) >= 2:
+        draw_paths(screen, path_v2, GREEN, width=3)
+
+    if len(population) > 1:
+        draw_paths(screen, population[1], rgb_color=(128, 128, 128), width=1)
+
+    
 
     print(f"Generation {generation}: Best fitness = {round(best_fitness, 2)}")
 

@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 from genetic_algorithm import (
-    mutate, order_crossover, generate_random_population,
+    mutate, order_crossover, generate_random_population, evaluate_two_vehicle_solution,
     calculate_fitness, sort_population, default_problems, build_distance_matrix,
     calculate_total_distance, calculate_priority_penalty, calculate_capacity_penalty
 )
@@ -173,28 +173,68 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
         if generation <= 3 or generation % 10 == 0 or generation == n_generations:
             print(f"Geração {generation:3d}: melhor fitness = {best_fitness:.4f}")
 
-    # Componentes estruturados do resultado (para LLM e relatório)
-    best_route_ids = [city_to_id_map[c] for c in best_solution]
-    total_distance = float(
-        calculate_total_distance(
-            best_solution,
-            hospital_coords,
-            city_to_id_map=city_to_id_map,
-            distance_matrix=distance_matrix,
-        )
-    )
-    priority_penalty = float(calculate_priority_penalty(best_solution, priorities, city_to_id_map, hospital_coords))
-    capacity_penalty = float(
-        calculate_capacity_penalty(best_solution, demands, city_to_id_map, hospital_coords, vehicle_capacity)
-    )
+    # # Componentes estruturados do resultado (para LLM e relatório)
+    # best_route_ids = [city_to_id_map[c] for c in best_solution]
+    # total_distance = float(
+    #     calculate_total_distance(
+    #         best_solution,
+    #         hospital_coords,
+    #         city_to_id_map=city_to_id_map,
+    #         distance_matrix=distance_matrix,
+    #     )
+    # )
+    # priority_penalty = float(calculate_priority_penalty(best_solution, priorities, city_to_id_map, hospital_coords))
+    # capacity_penalty = float(
+    #     calculate_capacity_penalty(best_solution, demands, city_to_id_map, hospital_coords, vehicle_capacity)
+    # )
+
+    # result = {
+    #     "config_used": cfg,
+    #     "best_route": best_route_ids,
+    #     "metrics": {
+    #         "total_distance": total_distance,
+    #         "priority_penalty": priority_penalty,
+    #         "capacity_penalty": capacity_penalty,
+    #         "fitness_final": float(best_fitness),
+    #     },
+    #     "history": {
+    #         "best_fitness_by_generation": best_fitness_history,
+    #     },
+    # }
+
+    evaluated = evaluate_two_vehicle_solution(
+    path=best_solution,
+    priorities=priorities,
+    city_to_id_map=city_to_id_map,
+    depot_coords=hospital_coords,
+    distance_matrix=distance_matrix,
+    demands=demands,
+    vehicle_capacity=vehicle_capacity,
+    weights=weights,
+    ) 
+
+    route_v1_coords = evaluated["routes"]["vehicle_1"]
+    route_v2_coords = evaluated["routes"]["vehicle_2"]
+
+    route_v1_ids = [city_to_id_map[c] for c in route_v1_coords]
+    route_v2_ids = [city_to_id_map[c] for c in route_v2_coords]
 
     result = {
         "config_used": cfg,
-        "best_route": best_route_ids,
+        "depot": hospital_coords,
+        "split": evaluated["split"],
+        "best_routes": {
+            "vehicle_1_coords": route_v1_coords,
+            "vehicle_2_coords": route_v2_coords,
+            "vehicle_1_ids": route_v1_ids,
+            "vehicle_2_ids": route_v2_ids,
+        },
         "metrics": {
-            "total_distance": total_distance,
-            "priority_penalty": priority_penalty,
-            "capacity_penalty": capacity_penalty,
+            "total_distance": evaluated["metrics"]["total_distance"],
+            "priority_penalty": evaluated["metrics"]["priority_penalty"],
+            "capacity_penalty": evaluated["metrics"]["capacity_penalty"],
+            "distance_v1": evaluated["metrics"]["distance_v1"],
+            "distance_v2": evaluated["metrics"]["distance_v2"],
             "fitness_final": float(best_fitness),
         },
         "history": {
@@ -206,7 +246,7 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
     print(f"Melhor fitness final: {best_fitness:.4f}")
     print("Para rodar com visualização gráfica: python tsp.py")
     print("=" * 60)
-
+    
     return result
 
 
