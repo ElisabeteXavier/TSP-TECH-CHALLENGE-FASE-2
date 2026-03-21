@@ -22,9 +22,9 @@ Resolver um problema de **roteamento logístico hospitalar**, inspirado no probl
 
 - Python 3.12
 - Algoritmos Genéticos
-- pygame
-- matplotlib
-- (futuramente) Integração com LLMs
+- Machine Learning (KNN para Hotstart)
+- pygame e matplotlib para visualização
+- Integração com LLMs
 - Ambiente virtual (venv)
 
 ---
@@ -33,12 +33,81 @@ Resolver um problema de **roteamento logístico hospitalar**, inspirado no probl
 
 ```text
 TSP-TECH-CHALLENGE-FASE-2/
-│
-├── venv/                 # Ambiente virtual
-├── tsp.py                # Script principal
-├── draw_functions.py     # Funções de visualização
-├── src/                  # (opcional) módulos organizados
-├── tests/                # Testes automatizados
-├── README.md
-├── requirements.txt
-└── .gitignore
+
+├── tsp.py: Script principal que gerencia o fluxo do algoritmo e a interface visual.  
+├── genetic_algorithm.py: Implementação do motor evolutivo, incluindo o Hotstart com KNN e operadores genéticos.  
+├── hospital_data.py: Centraliza as coordenadas do hospital e a lógica de pesos e penalidades para a função fitness.  
+├── draw_functions.py: Funções para renderização de cidades e rotas no Pygame.  
+├── benchmark_att48.py: Conjunto de dados padrão para testes de performance do algoritmo.  
+
+---
+# 🧬 Tech Challenge – Fase 2  
+## Otimização de Rotas Médicas com Algoritmos Genéticos
+
+...existing code...
+
+## 📁 Estrutura do Projeto
+
+```text
+TSP-TECH-CHALLENGE-FASE-2/
+
+├── tsp.py: Script principal que gerencia o fluxo do algoritmo e a interface visual.  
+├── genetic_algorithm.py: Implementação do motor evolutivo, incluindo o Hotstart com KNN e operadores genéticos.  
+├── hospital_data.py: Centraliza as coordenadas do hospital e a lógica de pesos e penalidades para a função fitness.  
+├── draw_functions.py: Funções para renderização de cidades e rotas no Pygame.  
+├── benchmark_att48.py: Conjunto de dados padrão para testes de performance do algoritmo.  
+├── README.md: Documentação diagramas e instruções de uso.  
+```
+
+---
+```
+## 🗂️ Diagramas do Projeto
+### 1. Diagrama de Arquitetura do Sistema
+
+Este diagrama ilustra a modularidade do seu projeto e como o orquestrador principal integra a lógica de evolução, as regras de negócio e a IA Generativa.
+
+
+```mermaid
+graph TD
+    subgraph Projeto_Python
+        A[tsp.py - Orquestrador Principal] --> B[genetic_algorithm.py - Motor Evolutivo]
+        A --> C[hospital_data.py - Dados e Regras de Negócio]
+        A --> D[draw_functions.py - Renderização Pygame]
+    end
+    
+    B --> E[KNN - Hotstart da População]
+    C --> F[Cálculo de Penalidades e Prioridades]
+    A --> G[API de LLM - GPT/Claude]
+    G --> H[Manuais e Relatórios em Linguagem Natural]
+```
+
+### 2. Fluxograma do Algoritmo Genético Customizado
+
+Este fluxo detalha o diferencial técnico do seu grupo: o uso de KNN para inicialização e a função fitness com penalidades clínicas (como emergências obstétricas e violência doméstica).
+
+```mermaid
+graph TD
+    Start(Início) --> Init[Inicialização: População com Hotstart KNN]
+    Init --> Fit[Avaliação: Fitness com Penalidades de Prioridade]
+    Fit --> Stop{Gerações Completas?}
+    
+    Stop -- Não --> Selection[Seleção: Torneio e Elitismo]
+    Selection --> Crossover[Cruzamento: Ordered Crossover - OX]
+    Crossover --> Mutation[Mutação: Swap Mutation]
+    Mutation --> Fit
+    
+    Stop -- Sim --> Best[Melhor Rota Encontrada]
+    Best --> Visual[Visualização no Mapa Pygame]
+```
+
+### 3. Diagrama de Fluxo de Dados com LLM
+
+Este diagrama mostra como o seu sistema cumpre o requisito de transformar dados numéricos em instruções sensíveis ao contexto da saúde da mulher.
+
+```mermaid
+graph LR
+    Route[Rota Otimizada: IDs das Unidades] --> Prompt[Prompt Engineering: Contexto Hospitalar]
+    Prompt --> LLM[LLM: Processamento de Linguagem Natural]
+    LLM --> Manual[Manual Prático para o Motorista]
+    LLM --> Report[Relatório de Eficiência e Economia]
+```
