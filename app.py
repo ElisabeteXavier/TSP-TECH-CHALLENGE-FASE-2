@@ -2,7 +2,32 @@ import streamlit as st
 import matplotlib.pyplot as plt
 
 from run_headless import run_ga_headless, load_dotenv_if_present
-from llm_client import llm_to_config, llm_to_explanation
+from llm_client import llm_to_config, llm_to_explanation, llm_generate_driver_instructions, llm_generate_efficiency_report, llm_suggest_improvements
+from hospital_data import priorities, demands, VEHICLE_CAPACITY
+from typing import Tuple
+from genetic_algorithm import default_problems
+import datetime
+import json
+import os
+
+# Storage simples em arquivo
+RESULTS_FILE = "results_history.json"
+
+def load_historical_results():
+    if os.path.exists(RESULTS_FILE):
+        with open(RESULTS_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_result(result):
+    history = load_historical_results()
+    result["timestamp"] = datetime.datetime.now().isoformat()
+    history.append(result)
+    # Manter apenas últimos 10 resultados
+    if len(history) > 10:
+        history = history[-10:]
+    with open(RESULTS_FILE, "w") as f:
+        json.dump(history, f, indent=2)
 
 
 # ---------------------------
@@ -25,7 +50,6 @@ mode = st.sidebar.radio(
     ["🤖 IA (texto)", "🎛️ Manual"]
 )
 
-generations = st.sidebar.slider("Gerações", 20, 300, 80)
 st.sidebar.divider()
 
 
@@ -39,9 +63,11 @@ if mode == "🤖 IA (texto)":
         "Descreva o objetivo:",
         placeholder="Ex: priorizar urgência mais que distância"
     )
+    # No modo IA, gerações não aparecem para o usuário.
+    # O backend usa o que vier da LLM ou default.
     config = {}
 else:
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         dist = st.slider("Peso Distância", 0.0, 1.0, 0.3)
@@ -49,6 +75,8 @@ else:
         prio = st.slider("Peso Prioridade", 0.0, 1.0, 0.5)
     with col3:
         cap = st.slider("Peso Capacidade", 0.0, 1.0, 0.2)
+    with col4:
+        generations = st.slider("Gerações", 20, 1000, 80, step=10)
 
     config = {
         "weights": {
@@ -98,12 +126,10 @@ if run:
     with st.spinner("Rodando otimização... 🤖"):
         try:
             if objective:
-                llm_cfg = llm_to_config(objective)
-                llm_cfg["n_generations"] = generations  # garante slider
-                config = llm_cfg
+                config = llm_to_config(objective)
 
             result = run_ga_headless(config or {})
-            explanation = llm_to_explanation(result)
+          #  explanation = llm_to_explanation(result)
 
         except Exception as e:
             st.error(f"Erro: {e}")
@@ -142,7 +168,8 @@ if run:
     # EVOLUÇÃO
     # ---------------------------
     st.subheader("📈 Evolução")
-    st.line_chart(result.get("history", {}).get("best_fitness_by_generation", []))
+    history = result.get("history", {}).get("best_fitness_by_generation", [])
+    st.line_chart(history)
 
     # ---------------------------
     # ROTAS
@@ -157,8 +184,55 @@ if run:
         st.write("Veículo 1 IDs:", best_routes.get("vehicle_1_ids", []))
         st.write("Veículo 2 IDs:", best_routes.get("vehicle_2_ids", []))
 
+    # # ---------------------------
+    # # EXPLICAÇÃO
+    # # ---------------------------
+    # st.subheader("🧠 Explicação da IA")
+    # st.info(explanation)
+    #     # Salvar resultado para histórico
+    save_result(result)
+    historical_results = load_historical_results()[:-1]  # Excluir o atual
+
+    # # ---------------------------
+    # DASHBOARD DE INTELIGÊNCIA
     # ---------------------------
-    # EXPLICAÇÃO
-    # ---------------------------
-    st.subheader("🧠 Explicação da IA")
-    st.info(explanation)
+    st.subheader("🧠 Inteligência Operacional")
+
+    tab1, tab2, tab3 = st.tabs(["🚐 Instruções Motoristas", "📊 Relatório Eficiência", "💡 Sugestões"])
+
+    with tab1:
+        st.write("**Instruções Detalhadas para Motoristas**")
+        try:
+            driver_instructions = llm_generate_driver_instructions(
+        routes=best_routes,
+        priorities=priorities,
+        demands=demands,  # ✅ NOVO
+        vehicle_capacity=VEHICLE_CAPACITY,  # ✅ NOVO
+        depot_coords=depot
+        )
+           
+            st.info(driver_instructions)
+        except Exception as e:
+            st.warning(f"Erro ao gerar instruções: {e}")
+
+    with tab2:
+        st.write("**Relatório de Eficiência**")
+        try:
+            efficiency_report = llm_generate_efficiency_report(
+                current_result=result,
+                historical_results=historical_results
+            )
+            st.info(efficiency_report)
+        except Exception as e:
+            st.warning(f"Erro ao gerar relatório: {e}")
+
+    with tab3:
+        st.write("**Sugestões de Melhoria**")
+        try:
+            improvements = llm_suggest_improvements(
+                results_pattern=historical_results + [result],
+                current_config=result.get("config_used", {})
+            )
+            st.info(improvements)
+        except Exception as e:
+            st.warning(f"Erro ao gerar sugestões: {e}")

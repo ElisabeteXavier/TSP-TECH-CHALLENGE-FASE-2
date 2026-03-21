@@ -1,9 +1,9 @@
 import json
 import os
 import re
-from typing import Any, Dict, Optional
-
+from typing import Any, Dict, Optional, Tuple, List
 from schemas import CONFIG_SCHEMA_EXAMPLE
+from genetic_algorithm import default_problems
 
 
 def validate_config_shape(cfg: Dict[str, Any]) -> None:
@@ -245,3 +245,122 @@ Resultado anterior:
     validate_config_shape(cfg)
     return cfg
 
+
+
+def llm_generate_driver_instructions(
+    *,
+    routes: Dict[str, Any],
+    priorities: Dict[int, int],
+    demands: Dict[int, int],
+    vehicle_capacity: float,
+    depot_coords: Tuple[float, float],
+    provider: Optional[str] = None,
+) -> str:
+    """
+    Gera instruções detalhadas para motoristas baseadas nas rotas otimizadas.
+    """
+    # Calcular carga de cada veículo
+    vehicle_loads = {}
+    for vehicle_name, route in routes.items():
+        total_load = 0
+        for coord in route:
+            # Encontrar ID correspondente à coordenada
+            city_id = None
+            for cid, city_coord in enumerate(default_problems[15]):
+                if city_coord == coord and cid in demands:
+                    city_id = cid
+                    break
+            if city_id is not None:
+                total_load += demands[city_id]
+        vehicle_loads[vehicle_name] = total_load
+    
+    prompt = f"""
+Você é um coordenador de logística médica. Crie instruções detalhadas para os motoristas
+baseado nas rotas otimizadas abaixo.
+
+ROTAS OTIMIZADAS:
+{json.dumps(routes, ensure_ascii=False, indent=2)}
+
+PRIORIDADES (0=crítico, 1=regular, 2=insumo):
+{json.dumps(priorities, ensure_ascii=False, indent=2)}
+
+DEMANDAS (unidades por ponto):
+{json.dumps(demands, ensure_ascii=False, indent=2)}
+
+CAPACIDADE DOS VEÍCULOS: {vehicle_capacity} unidades
+
+CARGA POR VEÍCULO:
+{json.dumps(vehicle_loads, ensure_ascii=False, indent=2)}
+
+Coordenadas do Depósito: {depot_coords}
+
+REGRAS:
+- Seja claro e profissional
+- Inclua ordem de entrega e pontos críticos
+- Mencione capacidade do veículo e carga total
+- Destaque entregas urgentes (prioridade 0)
+- Adicione dicas de segurança e eficiência
+- Verifique se a carga não excede a capacidade
+- Formate como um briefing operacional separado por veículo
+""".strip()
+    
+    return call_llm(prompt, provider=provider).strip()
+
+
+def llm_generate_efficiency_report(
+    *,
+    current_result: Dict[str, Any],
+    historical_results: List[Dict[str, Any]] = None,
+    provider: Optional[str] = None,
+) -> str:
+    """
+    Cria relatório de eficiência diário/semanal com base nos resultados.
+    """
+    prompt = f"""
+Você é um analista de logística. Crie um relatório de eficiência baseado nos dados abaixo.
+
+Resultado Atual:
+{json.dumps(current_result, ensure_ascii=False, indent=2)}
+
+Resultados Históricos:
+{json.dumps(historical_results or [], ensure_ascii=False, indent=2)}
+
+Regras:
+- Analise tendências de desempenho
+- Compare com resultados anteriores
+- Destaque economias de tempo/distância
+- Sugira KPIs importantes
+- Use linguagem executiva-friendly
+- Inclua recomendações acionáveis
+""".strip()
+    
+    return call_llm(prompt, provider=provider).strip()
+
+
+def llm_suggest_improvements(
+    *,
+    results_pattern: List[Dict[str, Any]],
+    current_config: Dict[str, Any],
+    provider: Optional[str] = None,
+) -> str:
+    """
+    Sugere melhorias no processo com base em padrões identificados.
+    """
+    prompt = f"""
+Você é um consultor de otimização logística. Analise os padrões abaixo e sugira melhorias.
+
+Padrões de Resultados:
+{json.dumps(results_pattern, ensure_ascii=False, indent=2)}
+
+Configuração Atual:
+{json.dumps(current_config, ensure_ascii=False, indent=2)}
+
+Regras:
+- Identifique padrões de performance
+- Sugira ajustes nos pesos do algoritmo
+- Recomende mudanças operacionais
+- Proponha experimentos A/B
+- Foque em melhorias práticas e implementáveis
+""".strip()
+    
+    return call_llm(prompt, provider=provider).strip()
