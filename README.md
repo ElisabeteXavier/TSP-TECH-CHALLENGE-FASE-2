@@ -44,8 +44,7 @@ TSP-TECH-CHALLENGE-FASE-2/
 ## 🗂️ Diagramas do Projeto
 ### 1. Diagrama de Arquitetura do Sistema
 
-Este diagrama ilustra a modularidade do seu projeto e como o orquestrador principal integra a lógica de evolução, as regras de negócio e a IA Generativa.
-
+Este diagrama ilustra como os módulos do nosso projeto interagem entre si e com a IA Generativa.
 
 ```mermaid
 graph TD
@@ -63,7 +62,7 @@ graph TD
 
 ### 2. Fluxograma do Algoritmo Genético Customizado
 
-Este fluxo detalha o diferencial técnico do seu grupo: o uso de KNN para inicialização e a função fitness com penalidades clínicas (como emergências obstétricas e violência doméstica).
+Este fluxo detalha o processo evolutivo, destacando o uso do KNN para a população inicial e as penalidades na função fitness
 
 ```mermaid
 graph TD
@@ -82,7 +81,7 @@ graph TD
 
 ### 3. Diagrama de Fluxo de Dados com LLM
 
-Este diagrama mostra como o seu sistema cumpre o requisito de transformar dados numéricos em instruções sensíveis ao contexto da saúde da mulher.
+Mostra como a sequência de pontos otimizada é transformada nos entregáveis textuais exigidos pelo Tech Challenge
 
 ```mermaid
 graph LR
