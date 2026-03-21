@@ -40,26 +40,6 @@ TSP-TECH-CHALLENGE-FASE-2/
 ├── draw_functions.py: Funções para renderização de cidades e rotas no Pygame.  
 ├── benchmark_att48.py: Conjunto de dados padrão para testes de performance do algoritmo.  
 
----
-# 🧬 Tech Challenge – Fase 2  
-## Otimização de Rotas Médicas com Algoritmos Genéticos
-
-...existing code...
-
-## 📁 Estrutura do Projeto
-
-```text
-TSP-TECH-CHALLENGE-FASE-2/
-
-├── tsp.py: Script principal que gerencia o fluxo do algoritmo e a interface visual.  
-├── genetic_algorithm.py: Implementação do motor evolutivo, incluindo o Hotstart com KNN e operadores genéticos.  
-├── hospital_data.py: Centraliza as coordenadas do hospital e a lógica de pesos e penalidades para a função fitness.  
-├── draw_functions.py: Funções para renderização de cidades e rotas no Pygame.  
-├── benchmark_att48.py: Conjunto de dados padrão para testes de performance do algoritmo.  
-├── README.md: Documentação diagramas e instruções de uso.  
-```
-
----
 ```
 ## 🗂️ Diagramas do Projeto
 ### 1. Diagrama de Arquitetura do Sistema
