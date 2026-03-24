@@ -9,6 +9,7 @@ from genetic_algorithm import default_problems
 import datetime
 import json
 import os
+from llm_client import ask_llm_about_routes
 
 # Storage simples em arquivo
 RESULTS_FILE = "results_history.json"
@@ -141,6 +142,9 @@ def plot_two_routes(depot, route_v1, route_v2):
 
     return fig
 
+def serialize_route(route):
+    return " -> ".join([f"({p[0]},{p[1]})" for p in route])
+
 # ---------------------------
 # EXECUÇÃO
 # ---------------------------
@@ -163,8 +167,12 @@ if run:
     split = result.get("split", {})
     best_routes = result.get("best_routes", {})
     depot = result.get("depot", (0, 0))
+
     route_v1 = best_routes.get("vehicle_1_coords", [])
     route_v2 = best_routes.get("vehicle_2_coords", [])
+
+    st.session_state.route_v1 = route_v1
+    st.session_state.route_v2 = route_v2
 
     # ---------------------------
     # MÉTRICAS
@@ -266,3 +274,47 @@ if run:
             st.info(improvements)
         except Exception as e:
             st.warning(f"Erro ao gerar sugestões: {e}")
+
+if "route_v1" in st.session_state and "route_v2" in st.session_state:
+
+# ---------------------------
+# CHAT COM IA
+# ---------------------------
+    st.subheader("💬 Chat com a IA sobre a rota")
+
+if "route_v1" in st.session_state and "route_v2" in st.session_state:
+
+    route_v1 = st.session_state.route_v1
+    route_v2 = st.session_state.route_v2
+
+    # Inicializa histórico
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    user_input = st.chat_input("Pergunte algo sobre as rotas...")
+
+    if user_input:
+        st.session_state.chat_history.append(("user", user_input))
+
+        try:
+            rota1_str = serialize_route(route_v1)
+            rota2_str = serialize_route(route_v2)
+
+            resposta = ask_llm_about_routes(
+                route_v1=rota1_str,
+                route_v2=rota2_str,
+                question=user_input
+            )
+
+        except Exception as e:
+            resposta = f"Erro: {e}"
+
+        st.session_state.chat_history.append(("assistant", resposta))
+
+    # Renderiza chat
+    for role, msg in st.session_state.chat_history:
+        with st.chat_message(role):
+            st.write(msg)
+
+else:
+    st.info("Gere uma rota primeiro para usar o chat.")

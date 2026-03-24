@@ -31,6 +31,8 @@ def draw_plot(screen: pygame.Surface, x: list, y: list, x_label: str = 'Generati
     ax.set_ylabel(y_label)
     ax.set_xlabel(x_label)
     plt.tight_layout()
+    plt.show()
+    plt.close(fig)
 
     canvas = FigureCanvasAgg(fig)
     canvas.draw()

@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, Optional, Tuple, List
 from schemas import CONFIG_SCHEMA_EXAMPLE
 from genetic_algorithm import default_problems
+import openai
 
 
 def validate_config_shape(cfg: Dict[str, Any]) -> None:
@@ -364,3 +365,28 @@ Regras:
 """.strip()
     
     return call_llm(prompt, provider=provider).strip()
+
+def ask_llm_about_routes(route_v1, route_v2, question):
+    client = openai.OpenAI()
+
+    context = f"""
+Você está analisando rotas de entrega hospitalar.
+
+Motorista 1:
+{route_v1}
+
+Motorista 2:
+{route_v2}
+
+Responda perguntas com base nessas rotas.
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Especialista em logística hospitalar."},
+            {"role": "user", "content": context + f"\nPergunta: {question}"}
+        ]
+    )
+
+    return response.choices[0].message.content

@@ -12,8 +12,8 @@ import sys
 import numpy as np
 import pygame
 from benchmark_att48 import *
-
-
+from llm_client import ask_llm_about_route
+import openai
 
 # Define constant values
 # pygame
@@ -82,6 +82,12 @@ best_solutions = []
 city_to_id_map = {location: i for i, location in enumerate(cities_locations)}
 distance_matrix = build_distance_matrix(cities_locations)
 
+def serialize_route_for_llm(route):
+    """
+    Recebe uma lista de coordenadas e retorna uma string formatada para LLM.
+    """
+    return " -> ".join([f"({x},{y})" for (x, y) in route])
+
 # Main game loop
 running = True
 while running:
@@ -91,6 +97,23 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_q:
                 running = False
+            elif event.key == pygame.K_c:  # 'c' de chat
+                print("\n--- Interface Natural ---")
+                pergunta = input("Faça sua pergunta sobre a rota: ")
+            
+                # Separe as rotas dos dois motoristas
+                route_v1, route_v2, split_info = split_deliveries_two_vehicles(best_solution, HOSPITAL_COORDS)
+                rota1_texto = serialize_route_for_llm([HOSPITAL_COORDS] + route_v1)
+                rota2_texto = serialize_route_for_llm([HOSPITAL_COORDS] + route_v2)
+            
+                # Monte o contexto para a IA
+                contexto = (
+                    f"Rota do motorista 1: {rota1_texto}\n"
+                    f"Rota do motorista 2: {rota2_texto}\n\n"
+                    f"Pergunta: {pergunta}"
+                )
+                resposta = ask_llm_about_route(pergunta, contexto)
+                print(f"\nResposta da IA: {resposta}")
 
     generation = next(generation_counter)
 
@@ -169,7 +192,6 @@ while running:
 
     pygame.display.flip()
     clock.tick(FPS)
-
 
 # TODO: save the best individual in a file if it is better than the one saved.
 
