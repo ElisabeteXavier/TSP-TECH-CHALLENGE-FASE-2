@@ -12,6 +12,9 @@ import os
 
 # Storage simples em arquivo
 RESULTS_FILE = "results_history.json"
+cities_locations = default_problems[15]
+city_to_id_map = {location: i for i, location in enumerate(cities_locations)}
+
 
 def load_historical_results():
     if os.path.exists(RESULTS_FILE):
@@ -94,30 +97,49 @@ else:
 # ---------------------------
 run = st.button("🚀 Gerar melhor rota")
 
-
+priority_colors = {
+    0: "red",     # 🔴 crítico
+    1: "yellow",  # 🟡 médio
+    2: "green"    # 🟢 baixo
+}
 def plot_two_routes(depot, route_v1, route_v2):
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    # Veículo 1 (azul)
+    # Veículo 1
     if route_v1:
         x1 = [depot[0]] + [p[0] for p in route_v1] + [depot[0]]
         y1 = [depot[1]] + [p[1] for p in route_v1] + [depot[1]]
-        ax.plot(x1, y1, marker="o", color="blue", label="Veículo 1")
+        ax.plot(x1, y1, color="blue", linewidth=2, label="Veículo 1")
 
-    # Veículo 2 (verde)
+    # Veículo 2
     if route_v2:
         x2 = [depot[0]] + [p[0] for p in route_v2] + [depot[0]]
         y2 = [depot[1]] + [p[1] for p in route_v2] + [depot[1]]
-        ax.plot(x2, y2, marker="o", color="green", label="Veículo 2")
+        ax.plot(x2, y2, color="green", linewidth=2, label="Veículo 2")
 
-    # Depósito
-    ax.scatter([depot[0]], [depot[1]], color="black", s=120, label="Depósito", zorder=5)
+    # Pontos (cidades + depósito)
+    for city in cities_locations:
+
+        if city == depot:
+            ax.scatter(*city, c="black", s=120, label="Depósito", zorder=5)
+            continue
+
+        city_id = city_to_id_map[city]
+        priority = priorities.get(city_id, 3)
+
+        ax.scatter(
+            *city,
+            c=priority_colors[priority],
+            s=70,
+            edgecolors="black",
+            linewidth=0.5, zorder=3,
+        )
 
     ax.set_title("Rotas dos 2 veículos")
-    ax.legend()
+    # ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
     ax.grid(alpha=0.2)
-    return fig
 
+    return fig
 
 # ---------------------------
 # EXECUÇÃO
@@ -175,6 +197,14 @@ if run:
     # ROTAS
     # ---------------------------
     st.subheader("🗺️ Rotas")
+    st.markdown("### Legenda")
+    st.markdown(""" 
+    Hospitais(pelo nível de prioridade):
+    \n🔴 **Crítico**   🟡 **Médio**      🟢 **Baixo**    
+    \n⚫ **Depósito**
+    \nVeículos :  
+    \n🔵 **Veículo 1**      🟢 **Veículo 2**
+    """)
     try:
         st.pyplot(plot_two_routes(depot, route_v1, route_v2))
     except Exception as e:

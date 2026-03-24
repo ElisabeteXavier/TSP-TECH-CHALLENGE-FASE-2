@@ -6,7 +6,7 @@ from genetic_algorithm import (
     mutate, order_crossover, criate_population, calculate_fitness,
     sort_population, default_problems, build_distance_matrix, split_deliveries_two_vehicles
 )
-from draw_functions import draw_paths, draw_plot, draw_cities
+from draw_functions import draw_paths, draw_plot, draw_cities,draw_cities_with_priority
 from hospital_data import *
 import sys
 import numpy as np
@@ -116,9 +116,13 @@ while running:
     draw_plot(screen, list(range(len(best_fitness_values))),
               best_fitness_values, y_label="Fitness - Distance (pxls)")
 
-    draw_cities(screen, cities_locations[1:], RED, NODE_RADIUS)  # entregas
-    draw_cities(screen, [HOSPITAL_COORDS], BLACK, NODE_RADIUS)   # depósito/hospital
-
+    draw_cities_with_priority(
+    screen,
+    cities_locations,
+    priorities,
+    HOSPITAL_COORDS,
+    NODE_RADIUS
+)
     route_v1, route_v2, split_info = split_deliveries_two_vehicles(best_solution, HOSPITAL_COORDS)
 
     path_v1 = [HOSPITAL_COORDS] + route_v1
