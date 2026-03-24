@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 from genetic_algorithm import (
-    mutate, order_crossover, generate_random_population,
+    mutate, order_crossover, criate_population,
     calculate_fitness, sort_population, default_problems, build_distance_matrix,
     calculate_total_distance, calculate_priority_penalty, calculate_capacity_penalty
 )
@@ -131,7 +131,9 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
     print(f"Pesos fitness: {weights}")
     print("=" * 60)
 
-    population = generate_random_population(cities_locations, population_size)
+    # population = generate_random_population(cities_locations, population_size)
+    # best_fitness_history = []
+    population = criate_population(population_size, cities_locations, usar_hotstart=True)
     best_fitness_history = []
 
     best_solution = None
