@@ -168,7 +168,57 @@ python tsp.py
 
 ---
 
+## 🗂️ Diagramas do Projeto
+### 1. Diagrama de Arquitetura do Sistema
+
+Este diagrama ilustra como os módulos do nosso projeto interagem entre si e com a IA Generativa.
+
+```mermaid
+graph TD
+    subgraph Projeto_Python
+        A[tsp.py - Orquestrador Principal] --> B[genetic_algorithm.py - Motor Evolutivo]
+        A --> C[hospital_data.py - Dados e Regras de Negócio]
+        A --> D[draw_functions.py - Renderização Pygame]
+    end
+    
+    B --> E[KNN - Hotstart da População]
+    C --> F[Cálculo de Penalidades e Prioridades]
+    A --> G[API de LLM - GPT/Claude]
+    G --> H[Manuais e Relatórios em Linguagem Natural]
+```
+
+### 2. Fluxograma do Algoritmo Genético Customizado
+
+Este fluxo detalha o processo evolutivo, destacando o uso do KNN para a população inicial e as penalidades na função fitness
+
+```mermaid
+graph TD
+    Start(Início) --> Init[Inicialização: População com Hotstart KNN]
+    Init --> Fit[Avaliação: Fitness com Penalidades de Prioridade]
+    Fit --> Stop{Gerações Completas?}
+    
+    Stop -- Não --> Selection[Seleção: Torneio e Elitismo]
+    Selection --> Crossover[Cruzamento: Ordered Crossover - OX]
+    Crossover --> Mutation[Mutação: Swap Mutation]
+    Mutation --> Fit
+    
+    Stop -- Sim --> Best[Melhor Rota Encontrada]
+    Best --> Visual[Visualização no Mapa Pygame]
+```
+
+### 3. Diagrama de Fluxo de Dados com LLM
+
+Mostra como a sequência de pontos otimizada é transformada nos entregáveis textuais exigidos pelo Tech Challenge
+
+```mermaid
+graph LR
+    Route[Rota Otimizada: IDs das Unidades] --> Prompt[Prompt Engineering: Contexto Hospitalar]
+    Prompt --> LLM[LLM: Processamento de Linguagem Natural]
+    LLM --> Manual[Manual Prático para o Motorista]
+    LLM --> Report[Relatório de Eficiência e Economia]
+```
+
 ### ✅ Conclusão
 O projeto entrega uma solução de **roteirização multiobjetivo com AG** para 2 veículos, usando divisão espacial adaptativa e matriz de distâncias para eficiência.
 
-A abordagem é consistente com o objetivo acadêmico e permite evolução para técnicas mais avançadas de clustering e refinamento de rotas.
+A abordagem é consistente com o objetivo acadêmico e permite evolução para técnicas mais avançadas de clustering e refinamento de rotas.v
