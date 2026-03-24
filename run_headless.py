@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 from genetic_algorithm import (
-    mutate, order_crossover, generate_random_population, evaluate_two_vehicle_solution,
+    mutate, order_crossover, generate_random_population,
     calculate_fitness, sort_population, default_problems, build_distance_matrix,
     calculate_total_distance, calculate_priority_penalty, calculate_capacity_penalty
 )
@@ -70,6 +70,7 @@ def normalize_config(user_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     cfg["mutation_prob"] = min(1.0, max(0.0, _as_float(cfg.get("mutation_prob"), DEFAULT_CONFIG["mutation_prob"])))
     cfg["top_for_selection"] = max(2, _as_int(cfg.get("top_for_selection"), DEFAULT_CONFIG["top_for_selection"]))
     cfg["vehicle_capacity"] = _as_float(cfg.get("vehicle_capacity"), DEFAULT_CONFIG["vehicle_capacity"])
+    cfg["n_vehicles"] = max(1, min(5, _as_int(cfg.get("n_vehicles"), DEFAULT_CONFIG["n_vehicles"])))
 
     weights = cfg.get("weights") if isinstance(cfg.get("weights"), dict) else {}
 
@@ -117,6 +118,7 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
     mutation_prob = cfg["mutation_prob"]
     top_for_selection = cfg["top_for_selection"]
     vehicle_capacity = cfg["vehicle_capacity"]
+    n_vehicles = cfg["n_vehicles"]
     weights = cfg["weights"]
 
     print("=" * 60)
@@ -136,18 +138,18 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
 
     for generation in range(1, n_generations + 1):
         population_fitness = [
-            calculate_fitness(
-                ind,
-                priorities,
-                city_to_id_map,
-                hospital_coords,
-                distance_matrix,
-                demands=demands,
-                vehicle_capacity=vehicle_capacity,
-                weights=weights,
-            )
-            for ind in population
-        ]
+        calculate_fitness(
+            ind,
+            priorities,
+            city_to_id_map,
+            hospital_coords,
+            distance_matrix,
+            demands=demands,
+            vehicle_capacity=vehicle_capacity,
+            weights=weights,
+            n_vehicles=n_vehicles,
+        )["fitness"]  # Extrair apenas o valor do fitness
+        for ind in population ]
 
         population, population_fitness = sort_population(population, population_fitness)
         best_solution = population[0]
@@ -202,41 +204,32 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
     #     },
     # }
 
-    evaluated = evaluate_two_vehicle_solution(
+    evaluated = calculate_fitness(
     path=best_solution,
     priorities=priorities,
     city_to_id_map=city_to_id_map,
-    depot_coords=hospital_coords,
+    hospital_coords=hospital_coords,
+    n_vehicles=n_vehicles, 
     distance_matrix=distance_matrix,
     demands=demands,
     vehicle_capacity=vehicle_capacity,
     weights=weights,
     ) 
 
-    route_v1_coords = evaluated["routes"]["vehicle_1"]
-    route_v2_coords = evaluated["routes"]["vehicle_2"]
-
-    route_v1_ids = [city_to_id_map[c] for c in route_v1_coords]
-    route_v2_ids = [city_to_id_map[c] for c in route_v2_coords]
+   
+  # Extrai rotas dinamicamente para N veículos
+    best_routes = {}
+    for vehicle_id, route_coords in evaluated["routes"].items():
+        route_ids = [city_to_id_map[c] for c in route_coords]
+        best_routes[f"{vehicle_id}_coords"] = route_coords
+        best_routes[f"{vehicle_id}_ids"] = route_ids
 
     result = {
         "config_used": cfg,
         "depot": hospital_coords,
         "split": evaluated["split"],
-        "best_routes": {
-            "vehicle_1_coords": route_v1_coords,
-            "vehicle_2_coords": route_v2_coords,
-            "vehicle_1_ids": route_v1_ids,
-            "vehicle_2_ids": route_v2_ids,
-        },
-        "metrics": {
-            "total_distance": evaluated["metrics"]["total_distance"],
-            "priority_penalty": evaluated["metrics"]["priority_penalty"],
-            "capacity_penalty": evaluated["metrics"]["capacity_penalty"],
-            "distance_v1": evaluated["metrics"]["distance_v1"],
-            "distance_v2": evaluated["metrics"]["distance_v2"],
-            "fitness_final": float(best_fitness),
-        },
+        "best_routes": best_routes,
+        "metrics": evaluated["metrics"],
         "history": {
             "best_fitness_by_generation": best_fitness_history,
         },
