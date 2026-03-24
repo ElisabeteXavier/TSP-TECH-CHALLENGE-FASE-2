@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from run_headless import run_ga_headless, load_dotenv_if_present
 from llm_client import llm_to_config, llm_to_explanation, llm_generate_driver_instructions, llm_generate_efficiency_report, llm_suggest_improvements
-from hospital_data import priorities, demands, VEHICLE_CAPACITY
+from hospital_data import priorities, demands, VEHICLE_CAPACITY, VEHICLE_MAX_AUTONOMY
 from typing import Tuple
 from genetic_algorithm import default_problems
 import datetime
@@ -88,7 +88,8 @@ else:
             "priority": prio,
             "capacity": cap
         },
-        "n_generations": generations
+        "n_generations": generations,
+        "vehicle_max_autonomy": VEHICLE_MAX_AUTONOMY
     }
     objective = None
 
@@ -179,7 +180,7 @@ if run:
     # ---------------------------
     st.subheader("📊 Resultados")
     c1, c2, c3 = st.columns(3)
-    c4, c5, c6 = st.columns(3)
+    c4, c5, c6, c7 = st.columns(4)
 
     c1.metric("Fitness final", f"{metrics.get('fitness_final', 0):.2f}")
     c2.metric("Distância total", f"{metrics.get('total_distance', 0):.2f}")
@@ -187,6 +188,7 @@ if run:
     c4.metric("Distância V2", f"{metrics.get('distance_v2', 0):.2f}")
     c5.metric("Penalidade prioridade", f"{metrics.get('priority_penalty', 0):.2f}")
     c6.metric("Penalidade capacidade", f"{metrics.get('capacity_penalty', 0):.2f}")
+    c7.metric("Penalidade autonomia", f"{metrics.get('autonomy_penalty', 0):.2f}")
 
     st.caption(
         f"Corte: eixo={split.get('axis', 'N/A')} | "
@@ -246,6 +248,8 @@ if run:
         priorities=priorities,
         demands=demands,  # ✅ NOVO
         vehicle_capacity=VEHICLE_CAPACITY,  # ✅ NOVO
+        vehicle_max_autonomy=cfg.get("vehicle_max_autonomy"),  # ✅ NOVO
+        vehicle_max_autonomy=vehicle_max_autonomy,
         depot_coords=depot
         )
            

@@ -35,3 +35,4 @@ demands = {
 
 # Capacidade máxima do veículo por viagem. Rota válida se soma(demands da rota) <= este valor.
 VEHICLE_CAPACITY = 15
+VEHICLE_MAX_AUTONOMY = 1500

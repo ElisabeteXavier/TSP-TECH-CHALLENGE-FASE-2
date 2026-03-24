@@ -123,6 +123,7 @@ def generate_route_knn(hospitais):
 
     return rota
 
+
 def calculate_priority_penalty(
     path: List[Tuple[float, float]], 
     priorities: Dict[int, int], 
@@ -249,6 +250,7 @@ def evaluate_two_vehicle_solution(
     demands: Dict[int, int] = None,
     vehicle_capacity: float = None,
     weights: Dict[str, float] = None,
+    vehicle_max_autonomy: float = None, 
 ) -> Dict[str, Any]:
     if weights is None:
         weights = {}
@@ -256,6 +258,7 @@ def evaluate_two_vehicle_solution(
     w_dist = float(weights.get("distance", 0.3))
     w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
     w_cap = float(weights.get("capacity", 0.2))
+    w_auto = float(weights.get("autonomy", 0.8))
 
     route_v1, route_v2, split_info = split_deliveries_two_vehicles(path, depot_coords)
 
@@ -265,6 +268,14 @@ def evaluate_two_vehicle_solution(
     dist_v2 = calculate_total_distance(
         route_v2, depot_coords, city_to_id_map=city_to_id_map, distance_matrix=distance_matrix
     ) if route_v2 else 0.0
+
+    if vehicle_max_autonomy is not None:
+        auto_v1 = calculate_autonomy_penalty(dist_v1, vehicle_max_autonomy)
+        auto_v2 = calculate_autonomy_penalty(dist_v2, vehicle_max_autonomy)
+    else:
+        auto_v1 = 0.0
+        auto_v2 = 0.0
+    total_autonomy_penalty = float(auto_v1 + auto_v2)
 
     prio_v1 = calculate_priority_penalty(route_v1, priorities, city_to_id_map, depot_coords) if route_v1 else 0.0
     prio_v2 = calculate_priority_penalty(route_v2, priorities, city_to_id_map, depot_coords) if route_v2 else 0.0
@@ -281,9 +292,18 @@ def evaluate_two_vehicle_solution(
     total_capacity_penalty = float(cap_v1 + cap_v2)
 
     if demands is not None and vehicle_capacity is not None:
-        fitness = w_dist * total_distance + w_prio * total_priority_penalty + w_cap * total_capacity_penalty
+        fitness = (
+            w_dist * total_distance +
+            w_prio * total_priority_penalty +
+            w_cap * total_capacity_penalty +
+            w_auto * total_autonomy_penalty
+        )
     else:
-        fitness = w_dist * total_distance + w_prio * total_priority_penalty
+        fitness = (
+            w_dist * total_distance +
+            w_prio * total_priority_penalty +
+            w_auto * total_autonomy_penalty
+        )
 
     return {
         "fitness": float(fitness),
@@ -296,47 +316,12 @@ def evaluate_two_vehicle_solution(
             "total_distance": total_distance,
             "priority_penalty": total_priority_penalty,
             "capacity_penalty": total_capacity_penalty,
+            "autonomy_penalty": total_autonomy_penalty,
             "distance_v1": float(dist_v1),
             "distance_v2": float(dist_v2),
         },
     }
 
-# def calculate_fitness(
-#     path: List[Tuple[float, float]],
-#     priorities: Dict[int, int],
-#     city_to_id_map: Dict[Tuple[float, float], int],
-#     hospital_coords: Tuple[float, float],
-#     distance_matrix: List[List[float]] = None,
-#     demands: Dict[int, int] = None,
-#     vehicle_capacity: float = None,
-#     weights: Dict[str, float] = None,
-# ) -> float:
-#     """
-#     Fitness = w_dist*distância + w_prio*prioridade + w_cap*penalidade_capacidade.
-#     Se demands e vehicle_capacity não forem passados, usa só distância e prioridade.
-#     """
-#     if weights is None:
-#         weights = {}
-#     w_dist = float(weights.get("distance", 0.3))
-#     w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
-#     w_cap = float(weights.get("capacity", 0.2))
-
-#     distancia = calculate_total_distance(
-#         path, hospital_coords,
-#         city_to_id_map=city_to_id_map,
-#         distance_matrix=distance_matrix,
-#     )
-#     prioridade = calculate_priority_penalty(path, priorities, city_to_id_map, hospital_coords)
-
-#     if demands is not None and vehicle_capacity is not None:
-#         capacidade_penalty = calculate_capacity_penalty(
-#             path, demands, city_to_id_map, hospital_coords, vehicle_capacity
-#         )
-#         fitness = w_dist * distancia + w_prio * prioridade + w_cap * capacidade_penalty
-#     else:
-#         fitness = w_dist * distancia + w_prio * prioridade
-
-#     return fitness
 
 def calculate_fitness(
     path: List[Tuple[float, float]],
@@ -347,6 +332,7 @@ def calculate_fitness(
     demands: Dict[int, int] = None,
     vehicle_capacity: float = None,
     weights: Dict[str, float] = None,
+    vehicle_max_autonomy: float = None
 ) -> float:
     """
     Fitness para 2 veículos:
@@ -362,6 +348,7 @@ def calculate_fitness(
         demands=demands,
         vehicle_capacity=vehicle_capacity,
         weights=weights,
+        vehicle_max_autonomy=vehicle_max_autonomy
     )
     return float(evaluated["fitness"])
 
@@ -395,34 +382,7 @@ def order_crossover(parent1: List[Tuple[float, float]], parent2: List[Tuple[floa
 
     return child
 
-### demonstration: crossover test code
-# Example usage:
-# parent1 = [(1, 1), (2, 2), (3, 3), (4,4), (5,5), (6, 6)]
-# parent2 = [(6, 6), (5, 5), (4, 4), (3, 3),  (2, 2), (1, 1)]
 
-# # parent1 = [1, 2, 3, 4, 5, 6]
-# # parent2 = [6, 5, 4, 3, 2, 1]
-
-
-# child = order_crossover(parent1, parent2)
-# print("Parent 1:", [0, 1, 2, 3, 4, 5, 6, 7, 8])
-# print("Parent 1:", parent1)
-# print("Parent 2:", parent2)
-# print("Child   :", child)
-
-
-# # Example usage:
-# population = generate_random_population(5, 10)
-
-# print(calculate_fitness(population[0]))
-
-
-# population = [(random.randint(0, 100), random.randint(0, 100))
-#           for _ in range(3)]
-
-
-
-# TODO: implement a mutation_intensity and invert pieces of code instead of just swamping two. 
 def mutate(solution:  List[Tuple[float, float]], mutation_probability: float) ->  List[Tuple[float, float]]:
     """
     Mutate a solution by inverting a segment of the sequence with a given mutation probability.
@@ -451,15 +411,6 @@ def mutate(solution:  List[Tuple[float, float]], mutation_probability: float) ->
         
     return mutated_solution
 
-### Demonstration: mutation test code    
-# # Example usage:
-# original_solution = [(1, 1), (2, 2), (3, 3), (4, 4)]
-# mutation_probability = 1
-
-# mutated_solution = mutate(original_solution, mutation_probability)
-# print("Original Solution:", original_solution)
-# print("Mutated Solution:", mutated_solution)
-
 
 def sort_population(population: List[List[Tuple[float, float]]], fitness: List[float]) -> Tuple[List[List[Tuple[float, float]]], List[float]]:
     """
@@ -484,55 +435,11 @@ def sort_population(population: List[List[Tuple[float, float]]], fitness: List[f
     return sorted_population, sorted_fitness
 
 
-# if __name__ == '__main__':
-#     N_CITIES = 10
-    
-#     POPULATION_SIZE = 100
-#     N_GENERATIONS = 100
-#     MUTATION_PROBABILITY = 0.3
-#     cities_locations = [(random.randint(0, 100), random.randint(0, 100))
-#               for _ in range(N_CITIES)]
-    
-#     # CREATE INITIAL POPULATION
-#     population = generate_random_population(cities_locations, POPULATION_SIZE)
+def calculate_autonomy_penalty(route_distance, max_autonomy, weight=10):
+    if route_distance <= max_autonomy:
+        return 0
 
-#     # Lists to store best fitness and generation for plotting
-#     best_fitness_values = []
-#     best_solutions = []
-    
-#     for generation in range(N_GENERATIONS):
-  
-        
-#         population_fitness = [calculate_fitness(individual) for individual in population]    
-        
-#         population, population_fitness = sort_population(population,  population_fitness)
-        
-#         best_fitness = calculate_fitness(population[0])
-#         best_solution = population[0]
-           
-#         best_fitness_values.append(best_fitness)
-#         best_solutions.append(best_solution)    
+    excess_ratio = (route_distance - max_autonomy) / max_autonomy
 
-#         print(f"Generation {generation}: Best fitness = {best_fitness}")
-
-#         new_population = [population[0]]  # Keep the best individual: ELITISM
-        
-#         while len(new_population) < POPULATION_SIZE:
-            
-#             # SELECTION
-#             parent1, parent2 = random.choices(population[:10], k=2)  # Select parents from the top 10 individuals
-            
-#             # CROSSOVER
-#             child1 = order_crossover(parent1, parent2)
-            
-#             ## MUTATION
-#             child1 = mutate(child1, MUTATION_PROBABILITY)
-            
-#             new_population.append(child1)
-            
-    
-#         print('generation: ', generation)
-#         population = new_population
-
-
-
+    # Penalidade baseada em porcentagem + crescimento exponencial
+    return weight * (excess_ratio ** 2) * max_autonomy

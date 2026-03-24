@@ -70,6 +70,7 @@ def normalize_config(user_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     cfg["mutation_prob"] = min(1.0, max(0.0, _as_float(cfg.get("mutation_prob"), DEFAULT_CONFIG["mutation_prob"])))
     cfg["top_for_selection"] = max(2, _as_int(cfg.get("top_for_selection"), DEFAULT_CONFIG["top_for_selection"]))
     cfg["vehicle_capacity"] = _as_float(cfg.get("vehicle_capacity"), DEFAULT_CONFIG["vehicle_capacity"])
+    cfg["vehicle_max_autonomy"] = _as_float(cfg.get("vehicle_max_autonomy"), DEFAULT_CONFIG["vehicle_max_autonomy"])
 
     weights = cfg.get("weights") if isinstance(cfg.get("weights"), dict) else {}
 
@@ -144,6 +145,7 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
                 distance_matrix,
                 demands=demands,
                 vehicle_capacity=vehicle_capacity,
+                vehicle_max_autonomy=cfg.get("vehicle_max_autonomy"),
                 weights=weights,
             )
             for ind in population
@@ -210,6 +212,7 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
     distance_matrix=distance_matrix,
     demands=demands,
     vehicle_capacity=vehicle_capacity,
+    vehicle_max_autonomy = cfg["vehicle_max_autonomy"],
     weights=weights,
     ) 
 
@@ -233,6 +236,7 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
             "total_distance": evaluated["metrics"]["total_distance"],
             "priority_penalty": evaluated["metrics"]["priority_penalty"],
             "capacity_penalty": evaluated["metrics"]["capacity_penalty"],
+            "autonomy_penalty": evaluated["metrics"]["autonomy_penalty"],
             "distance_v1": evaluated["metrics"]["distance_v1"],
             "distance_v2": evaluated["metrics"]["distance_v2"],
             "fitness_final": float(best_fitness),
