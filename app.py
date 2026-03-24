@@ -2,14 +2,13 @@ import streamlit as st
 import matplotlib.pyplot as plt
 
 from run_headless import run_ga_headless, load_dotenv_if_present
-from llm_client import llm_to_config, llm_to_explanation, llm_generate_driver_instructions, llm_generate_efficiency_report, llm_suggest_improvements
+from llm_client import llm_to_config, llm_to_explanation, llm_generate_driver_instructions, llm_generate_efficiency_report, llm_suggest_improvements,ask_llm_about_routes
 from hospital_data import priorities, demands, VEHICLE_CAPACITY, VEHICLE_MAX_AUTONOMY
 from typing import Tuple
 from genetic_algorithm import default_problems
 import datetime
 import json
 import os
-from llm_client import ask_llm_about_routes
 
 # Storage simples em arquivo
 RESULTS_FILE = "results_history.json"
@@ -37,13 +36,12 @@ def save_result(result):
 # ---------------------------
 # CONFIG INICIAL
 # ---------------------------
+n_vehicles_default = 2 
 st.set_page_config(page_title="Otimizador IA", layout="wide")
 load_dotenv_if_present()
 
 st.title("🚚 Otimizador Inteligente de Rotas")
-st.caption("Algoritmo Genético + IA (2 veículos)")
-
-
+st.caption(f"Algoritmo Genético + IA ({n_vehicles_default} veículos)")
 # ---------------------------
 # SIDEBAR
 # ---------------------------
@@ -60,16 +58,21 @@ st.sidebar.divider()
 # ---------------------------
 # INPUT
 # ---------------------------
+
 st.subheader("🎯 Defina sua estratégia")
+
+# Slider global de número de veículos (aparece em ambos os modos)
+n_vehicles = st.slider("Número de Veículos", 1, 5, 2)
 
 if mode == "🤖 IA (texto)":
     objective = st.text_area(
         "Descreva o objetivo:",
         placeholder="Ex: priorizar urgência mais que distância"
     )
-    # No modo IA, gerações não aparecem para o usuário.
-    # O backend usa o que vier da LLM ou default.
-    config = {}
+    config = {
+        "n_vehicles": n_vehicles,
+        "vehicle_max_autonomy": VEHICLE_MAX_AUTONOMY
+    }
 else:
     col1, col2, col3, col4 = st.columns(4)
 
@@ -81,7 +84,6 @@ else:
         cap = st.slider("Peso Capacidade", 0.0, 1.0, 0.2)
     with col4:
         generations = st.slider("Gerações", 20, 1000, 80, step=10)
-
     config = {
         "weights": {
             "distance": dist,
@@ -89,10 +91,9 @@ else:
             "capacity": cap
         },
         "n_generations": generations,
+        "n_vehicles": n_vehicles,
         "vehicle_max_autonomy": VEHICLE_MAX_AUTONOMY
     }
-    objective = None
-
 
 # ---------------------------
 # BOTÃO
@@ -104,48 +105,43 @@ priority_colors = {
     1: "yellow",  # 🟡 médio
     2: "green"    # 🟢 baixo
 }
-def plot_two_routes(depot, route_v1, route_v2):
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    # Veículo 1
-    if route_v1:
-        x1 = [depot[0]] + [p[0] for p in route_v1] + [depot[0]]
-        y1 = [depot[1]] + [p[1] for p in route_v1] + [depot[1]]
-        ax.plot(x1, y1, color="blue", linewidth=2, label="Veículo 1")
-
-    # Veículo 2
-    if route_v2:
-        x2 = [depot[0]] + [p[0] for p in route_v2] + [depot[0]]
-        y2 = [depot[1]] + [p[1] for p in route_v2] + [depot[1]]
-        ax.plot(x2, y2, color="green", linewidth=2, label="Veículo 2")
-
-    # Pontos (cidades + depósito)
+def plot_routes(depot, routes_dict):
+    """Plota rotas para N veículos de forma dinâmica"""
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Cores para diferentes veículos
+    colors = ['blue', 'green', 'red', 'orange', 'purple']
+    
+    # Plota cada rota de veículo
+    for i, (vehicle_id, route_coords) in enumerate(routes_dict.items()):
+        if route_coords:
+            color = colors[i % len(colors)]
+            x = [depot[0]] + [p[0] for p in route_coords] + [depot[0]]
+            y = [depot[1]] + [p[1] for p in route_coords] + [depot[1]]
+            ax.plot(x, y, color=color, linewidth=2, label=f"Veículo {i+1}")
+    
+    # Plota pontos (cidades + depósito)
     for city in cities_locations:
-
         if city == depot:
             ax.scatter(*city, c="black", s=120, label="Depósito", zorder=5)
             continue
-
+        
         city_id = city_to_id_map[city]
         priority = priorities.get(city_id, 3)
-
+        
         ax.scatter(
             *city,
             c=priority_colors[priority],
             s=70,
             edgecolors="black",
-            linewidth=0.5, zorder=3,
+            linewidth=0.5, 
+            zorder=3,
         )
-
-    ax.set_title("Rotas dos 2 veículos")
-    # ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+    
+    ax.set_title(f"Rotas dos {len(routes_dict)} veículos")
     ax.grid(alpha=0.2)
-
+    
     return fig
-
-def serialize_route(route):
-    return " -> ".join([f"({p[0]},{p[1]})" for p in route])
-
 # ---------------------------
 # EXECUÇÃO
 # ---------------------------
@@ -154,6 +150,9 @@ if run:
         try:
             if objective:
                 config = llm_to_config(objective)
+
+            if "vehicle_max_autonomy" not in config:
+                config["vehicle_max_autonomy"] = VEHICLE_MAX_AUTONOMY
 
             result = run_ga_headless(config or {})
           #  explanation = llm_to_explanation(result)
@@ -166,15 +165,14 @@ if run:
 
     metrics = result.get("metrics", {})
     split = result.get("split", {})
-    best_routes = result.get("best_routes", {})
+    # Extrai rotas do resultado (apenas coordenadas para plotagem)
+    best_routes = {}
+    for key, value in result.get("best_routes", {}).items():
+        if key.endswith("_coords"):
+            best_routes[key] = value
     depot = result.get("depot", (0, 0))
-
-    route_v1 = best_routes.get("vehicle_1_coords", [])
-    route_v2 = best_routes.get("vehicle_2_coords", [])
-
-    st.session_state.route_v1 = route_v1
-    st.session_state.route_v2 = route_v2
-
+    # Salvar rotas no session_state para o chat
+    st.session_state.best_routes = best_routes
     # ---------------------------
     # MÉTRICAS
     # ---------------------------
@@ -184,8 +182,12 @@ if run:
 
     c1.metric("Fitness final", f"{metrics.get('fitness_final', 0):.2f}")
     c2.metric("Distância total", f"{metrics.get('total_distance', 0):.2f}")
-    c3.metric("Distância V1", f"{metrics.get('distance_v1', 0):.2f}")
-    c4.metric("Distância V2", f"{metrics.get('distance_v2', 0):.2f}")
+    n_display_vehicles = len([k for k in metrics.keys() if k.startswith('distance_v')])
+    if n_display_vehicles > 0:
+        c3.metric(f"Distância V1", f"{metrics.get('distance_v1', 0):.2f}")
+    if n_display_vehicles > 1:
+        c4.metric(f"Distância V2", f"{metrics.get('distance_v2', 0):.2f}")
+
     c5.metric("Penalidade prioridade", f"{metrics.get('priority_penalty', 0):.2f}")
     c6.metric("Penalidade capacidade", f"{metrics.get('capacity_penalty', 0):.2f}")
     c7.metric("Penalidade autonomia", f"{metrics.get('autonomy_penalty', 0):.2f}")
@@ -207,23 +209,34 @@ if run:
     # ROTAS
     # ---------------------------
     st.subheader("🗺️ Rotas")
-    st.markdown("### Legenda")
-    st.markdown(""" 
+ # Gera legenda dinâmica baseada no número de veículos
+    vehicle_legends = []
+    n_display_vehicles = len([k for k in best_routes.keys() if k.endswith('_coords')])
+    colors = ['🔵', '🟢', '🔴', '🟠', '🟣']
+
+    for i in range(n_display_vehicles):
+        vehicle_legends.append(f"{colors[i % len(colors)]} **Veículo {i+1}**")
+
+    vehicle_text = "      ".join(vehicle_legends)
+
+    st.markdown(f""" 
     Hospitais(pelo nível de prioridade):
     \n🔴 **Crítico**   🟡 **Médio**      🟢 **Baixo**    
     \n⚫ **Depósito**
     \nVeículos :  
-    \n🔵 **Veículo 1**      🟢 **Veículo 2**
+    \n{vehicle_text}
     """)
     try:
-        st.pyplot(plot_two_routes(depot, route_v1, route_v2))
+        # st.pyplot(plot_two_routes(depot, route_v1, route_v2))
+        st.pyplot(plot_routes(depot, best_routes))
     except Exception as e:
         st.warning(f"Não foi possível desenhar as rotas: {e}")
 
     with st.expander("Ver rotas (IDs)"):
-        st.write("Veículo 1 IDs:", best_routes.get("vehicle_1_ids", []))
-        st.write("Veículo 2 IDs:", best_routes.get("vehicle_2_ids", []))
-
+        for vehicle_id, route_ids in best_routes.items():
+            if vehicle_id.endswith('_ids'):
+                vehicle_name = vehicle_id.replace('_ids', '')
+                st.write(f"{vehicle_name} IDs:", route_ids)
     # # ---------------------------
     # # EXPLICAÇÃO
     # # ---------------------------
@@ -244,14 +257,13 @@ if run:
         st.write("**Instruções Detalhadas para Motoristas**")
         try:
             driver_instructions = llm_generate_driver_instructions(
-        routes=best_routes,
-        priorities=priorities,
-        demands=demands,  # ✅ NOVO
-        vehicle_capacity=VEHICLE_CAPACITY,  # ✅ NOVO
-        vehicle_max_autonomy=cfg.get("vehicle_max_autonomy"),  # ✅ NOVO
-        vehicle_max_autonomy=vehicle_max_autonomy,
-        depot_coords=depot
-        )
+                routes=best_routes,
+                priorities=priorities,
+                demands=demands,
+                vehicle_capacity=VEHICLE_CAPACITY,
+                vehicle_max_autonomy=VEHICLE_MAX_AUTONOMY,
+                depot_coords=depot
+            )
            
             st.info(driver_instructions)
         except Exception as e:
@@ -279,18 +291,35 @@ if run:
         except Exception as e:
             st.warning(f"Erro ao gerar sugestões: {e}")
 
-if "route_v1" in st.session_state and "route_v2" in st.session_state:
+# Adicionar função serialize_route se não existir:
+def serialize_route(route_coords):
+    """Converte coordenadas da rota para string legível"""
+    return [f"({x:.2f}, {y:.2f})" for x, y in route_coords]
+
+# Corrigir a condição do chat:
+if "best_routes" in st.session_state and st.session_state.best_routes:
+    # ... código do chat
 
 # ---------------------------
 # CHAT COM IA
 # ---------------------------
     st.subheader("💬 Chat com a IA sobre a rota")
 
-if "route_v1" in st.session_state and "route_v2" in st.session_state:
-
-    route_v1 = st.session_state.route_v1
-    route_v2 = st.session_state.route_v2
-
+# Substituir no chat:
+# Substituir no chat:
+if "best_routes" in st.session_state and st.session_state.best_routes:
+    # Extrair TODAS as rotas dinamicamente
+    all_routes = st.session_state.best_routes
+    
+    # Para o chat, passar todas as rotas como uma lista
+    all_route_coords = []
+    for vehicle_id, route_coords in all_routes.items():
+        if vehicle_id.endswith("_coords"):
+            all_route_coords.extend(route_coords)
+    
+    # Usar a rota combinada para o chat
+    route_v1 = all_route_coords
+    route_v2 = []  # Vazio, já que usamos todas em route_v1
     # Inicializa histórico
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []

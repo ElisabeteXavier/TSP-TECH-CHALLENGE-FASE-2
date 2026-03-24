@@ -174,7 +174,6 @@ def calculate_capacity_penalty(
     excesso = carga_total - vehicle_capacity
     return max(0.0, excesso)
 
-
 def _median(values: List[float]) -> float:
     if not values:
         return 0.0
@@ -193,41 +192,55 @@ def _std(values: List[float]) -> float:
     var = sum((v - mean) ** 2 for v in values) / len(values)
     return math.sqrt(var)
 
-
-def split_deliveries_two_vehicles(
+def split_deliveries_multi_vehicles(
     path: List[Tuple[float, float]],
     depot_coords: Tuple[float, float],
-) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]], Dict[str, Any]]:
+    n_vehicles: int = 2
+) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
     """
-    Separa entregas em 2 veículos usando corte dinâmico:
-    - escolhe eixo com maior dispersão (std de dx vs dy)
-    - threshold = mediana no eixo escolhido
+    Divide entregas entre N veículos usando estratégia adaptativa.
+    - 2 veículos: corte por mediana (ótimo)
+    - 3+ veículos: divisão sequencial balanceada
     """
     deliveries = [p for p in path if p != depot_coords]
-
+    
     if not deliveries:
-        return [], [], {"axis": "x", "threshold": 0.0, "fallback": False}
+        return [[] for _ in range(n_vehicles)], {"strategy": "empty", "fallback": False}
+    
+    # Estratégia para 2 veículos (mantém lógica otimizada)
+    if n_vehicles == 2:
+        vehicles_routes, split_info = _split_by_median(deliveries, depot_coords)
+        return vehicles_routes, split_info
+    
+    # Estratégia para 3+ veículos
+    return _split_sequential(deliveries, n_vehicles)
 
+
+def _split_by_median(
+    deliveries: List[Tuple[float, float]], 
+    depot_coords: Tuple[float, float]
+) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    """Divisão por mediana (para 2 veículos)"""
     dx = [p[0] - depot_coords[0] for p in deliveries]
     dy = [p[1] - depot_coords[1] for p in deliveries]
-
+    
     use_x = _std(dx) >= _std(dy)
     axis = "x" if use_x else "y"
-
+    
     axis_values = [p[0] if use_x else p[1] for p in deliveries]
     threshold = _median(axis_values)
-
+    
     vehicle_1 = []
     vehicle_2 = []
-
+    
     for p in deliveries:
         v = p[0] if use_x else p[1]
         if v <= threshold:
             vehicle_1.append(p)
         else:
             vehicle_2.append(p)
-
-    # fallback para evitar grupo vazio (especialmente em casos degenerados)
+    
+    # fallback para evitar grupo vazio
     fallback = False
     if len(vehicle_1) == 0 or len(vehicle_2) == 0:
         fallback = True
@@ -237,90 +250,33 @@ def split_deliveries_two_vehicles(
                 vehicle_1.append(p)
             else:
                 vehicle_2.append(p)
+    
+    return [vehicle_1, vehicle_2], {"axis": axis, "threshold": threshold, "fallback": fallback}
 
-    return vehicle_1, vehicle_2, {"axis": axis, "threshold": threshold, "fallback": fallback}
 
-
-def evaluate_two_vehicle_solution(
-    path: List[Tuple[float, float]],
-    priorities: Dict[int, int],
-    city_to_id_map: Dict[Tuple[float, float], int],
-    depot_coords: Tuple[float, float],
-    distance_matrix: List[List[float]] = None,
-    demands: Dict[int, int] = None,
-    vehicle_capacity: float = None,
-    weights: Dict[str, float] = None,
-    vehicle_max_autonomy: float = None, 
-) -> Dict[str, Any]:
-    if weights is None:
-        weights = {}
-
-    w_dist = float(weights.get("distance", 0.3))
-    w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
-    w_cap = float(weights.get("capacity", 0.2))
-    w_auto = float(weights.get("autonomy", 0.8))
-
-    route_v1, route_v2, split_info = split_deliveries_two_vehicles(path, depot_coords)
-
-    dist_v1 = calculate_total_distance(
-        route_v1, depot_coords, city_to_id_map=city_to_id_map, distance_matrix=distance_matrix
-    ) if route_v1 else 0.0
-    dist_v2 = calculate_total_distance(
-        route_v2, depot_coords, city_to_id_map=city_to_id_map, distance_matrix=distance_matrix
-    ) if route_v2 else 0.0
-
-    if vehicle_max_autonomy is not None:
-        auto_v1 = calculate_autonomy_penalty(dist_v1, vehicle_max_autonomy)
-        auto_v2 = calculate_autonomy_penalty(dist_v2, vehicle_max_autonomy)
-    else:
-        auto_v1 = 0.0
-        auto_v2 = 0.0
-    total_autonomy_penalty = float(auto_v1 + auto_v2)
-
-    prio_v1 = calculate_priority_penalty(route_v1, priorities, city_to_id_map, depot_coords) if route_v1 else 0.0
-    prio_v2 = calculate_priority_penalty(route_v2, priorities, city_to_id_map, depot_coords) if route_v2 else 0.0
-
-    if demands is not None and vehicle_capacity is not None:
-        cap_v1 = calculate_capacity_penalty(route_v1, demands, city_to_id_map, depot_coords, vehicle_capacity) if route_v1 else 0.0
-        cap_v2 = calculate_capacity_penalty(route_v2, demands, city_to_id_map, depot_coords, vehicle_capacity) if route_v2 else 0.0
-    else:
-        cap_v1 = 0.0
-        cap_v2 = 0.0
-
-    total_distance = float(dist_v1 + dist_v2)
-    total_priority_penalty = float(prio_v1 + prio_v2)
-    total_capacity_penalty = float(cap_v1 + cap_v2)
-
-    if demands is not None and vehicle_capacity is not None:
-        fitness = (
-            w_dist * total_distance +
-            w_prio * total_priority_penalty +
-            w_cap * total_capacity_penalty +
-            w_auto * total_autonomy_penalty
-        )
-    else:
-        fitness = (
-            w_dist * total_distance +
-            w_prio * total_priority_penalty +
-            w_auto * total_autonomy_penalty
-        )
-
-    return {
-        "fitness": float(fitness),
-        "split": split_info,
-        "routes": {
-            "vehicle_1": route_v1,
-            "vehicle_2": route_v2,
-        },
-        "metrics": {
-            "total_distance": total_distance,
-            "priority_penalty": total_priority_penalty,
-            "capacity_penalty": total_capacity_penalty,
-            "autonomy_penalty": total_autonomy_penalty,
-            "distance_v1": float(dist_v1),
-            "distance_v2": float(dist_v2),
-        },
-    }
+def _split_sequential(
+    deliveries: List[Tuple[float, float]], 
+    n_vehicles: int
+) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    """Divisão sequencial balanceada (para 3+ veículos)"""
+    vehicles = [[] for _ in range(n_vehicles)]
+    
+    # Distribui pontos sequencialmente
+    for i, point in enumerate(deliveries):
+        vehicle_idx = i % n_vehicles
+        vehicles[vehicle_idx].append(point)
+    
+    # Balanceamento: move pontos se algum veículo ficar vazio
+    fallback = False
+    for i in range(n_vehicles):
+        if not vehicles[i]:
+            fallback = True
+            max_idx = max(range(n_vehicles), key=lambda j: len(vehicles[j]))
+            if vehicles[max_idx]:
+                point = vehicles[max_idx].pop()
+                vehicles[i].append(point)
+    
+    return vehicles, {"strategy": "sequential", "fallback": fallback}
 
 
 def calculate_fitness(
@@ -332,26 +288,90 @@ def calculate_fitness(
     demands: Dict[int, int] = None,
     vehicle_capacity: float = None,
     weights: Dict[str, float] = None,
-    vehicle_max_autonomy: float = None
-) -> float:
+    vehicle_max_autonomy: float = None, 
+    n_vehicles: int = 2,
+) -> Dict[str, Any]:
     """
-    Fitness para 2 veículos:
-    - separa entregas em 2 rotas via corte dinâmico (x ou y)
-    - soma distância/prioridade/capacidade dos dois veículos
+    Fitness unificado para qualquer número de veículos.
     """
-    evaluated = evaluate_two_vehicle_solution(
-        path=path,
-        priorities=priorities,
-        city_to_id_map=city_to_id_map,
-        depot_coords=hospital_coords,
-        distance_matrix=distance_matrix,
-        demands=demands,
-        vehicle_capacity=vehicle_capacity,
-        weights=weights,
-        vehicle_max_autonomy=vehicle_max_autonomy
+    if weights is None:
+        weights = {}
+    
+    w_dist = float(weights.get("distance", 0.3))
+    w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
+    w_cap = float(weights.get("capacity", 0.2))
+    w_auto = float(weights.get("autonomy", 0.2))
+    
+    # Divide as rotas entre os veículos
+    vehicles_routes, split_info = split_deliveries_multi_vehicles(
+        path, hospital_coords, n_vehicles
     )
-    return float(evaluated["fitness"])
+    
+    # Calcula métricas totais
+    total_distance = 0.0
+    total_priority_penalty = 0.0
+    total_capacity_penalty = 0.0
+    total_autonomy_penalty = 0.0
+    
+    routes_dict = {}
+    metrics_dict = {"total_distance": 0.0, "priority_penalty": 0.0, "capacity_penalty": 0.0}
+    
+    for i, route in enumerate(vehicles_routes):
+        vehicle_id = f"vehicle_{i+1}"
+        routes_dict[vehicle_id] = route
+        
+        if route:
+            dist = calculate_total_distance(
+            route, hospital_coords,
+            city_to_id_map=city_to_id_map,
+            distance_matrix=distance_matrix
+        )
 
+        if vehicle_max_autonomy is not None:
+            autonomy_penalty = calculate_autonomy_penalty(
+                dist,
+                vehicle_max_autonomy
+            )
+            total_autonomy_penalty += autonomy_penalty
+
+            prio = calculate_priority_penalty(route, priorities, city_to_id_map, hospital_coords)
+            
+            total_distance += dist
+            total_priority_penalty += prio
+            
+            metrics_dict[f"distance_v{i+1}"] = float(dist)
+            
+            if demands is not None and vehicle_capacity is not None:
+                cap = calculate_capacity_penalty(route, demands, city_to_id_map, hospital_coords, vehicle_capacity)
+                total_capacity_penalty += cap
+        else:
+            metrics_dict[f"distance_v{i+1}"] = 0.0
+    
+    metrics_dict["total_distance"] = total_distance
+    metrics_dict["priority_penalty"] = total_priority_penalty  
+    metrics_dict["capacity_penalty"] = total_capacity_penalty
+    metrics_dict["autonomy_penalty"] = total_autonomy_penalty
+    
+    # Calcula fitness final
+    if demands is not None and vehicle_capacity is not None:
+        fitness = (
+            w_dist * total_distance +
+            w_prio * total_priority_penalty +
+            w_cap * total_capacity_penalty +
+            w_auto * total_autonomy_penalty
+        )
+    else:
+        fitness = w_dist * total_distance + w_prio * total_priority_penalty
+    
+    return {
+        "fitness": float(fitness),
+        "split": split_info,
+        "routes": routes_dict,
+        "metrics": {
+            **metrics_dict,
+            "fitness_final": float(fitness),
+        },
+    }
 
 def order_crossover(parent1: List[Tuple[float, float]], parent2: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """
