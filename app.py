@@ -2,14 +2,13 @@ import streamlit as st
 import matplotlib.pyplot as plt
 
 from run_headless import run_ga_headless, load_dotenv_if_present
-from llm_client import llm_to_config, llm_to_explanation, llm_generate_driver_instructions, llm_generate_efficiency_report, llm_suggest_improvements
+from llm_client import llm_to_config, llm_to_explanation, llm_generate_driver_instructions, llm_generate_efficiency_report, llm_suggest_improvements,ask_llm_about_routes
 from hospital_data import priorities, demands, VEHICLE_CAPACITY
 from typing import Tuple
 from genetic_algorithm import default_problems
 import datetime
 import json
 import os
-from llm_client import ask_llm_about_routes
 
 # Storage simples em arquivo
 RESULTS_FILE = "results_history.json"
@@ -167,9 +166,8 @@ if run:
         if key.endswith("_coords"):
             best_routes[key] = value
     depot = result.get("depot", (0, 0))
-    route_v1 = best_routes.get("vehicle_1_coords", [])
-    route_v2 = best_routes.get("vehicle_2_coords", [])
-
+    # Salvar rotas no session_state para o chat
+    st.session_state.best_routes = best_routes
     # ---------------------------
     # MÉTRICAS
     # ---------------------------
@@ -286,18 +284,35 @@ if run:
         except Exception as e:
             st.warning(f"Erro ao gerar sugestões: {e}")
 
-if "route_v1" in st.session_state and "route_v2" in st.session_state:
+# Adicionar função serialize_route se não existir:
+def serialize_route(route_coords):
+    """Converte coordenadas da rota para string legível"""
+    return [f"({x:.2f}, {y:.2f})" for x, y in route_coords]
+
+# Corrigir a condição do chat:
+if "best_routes" in st.session_state and st.session_state.best_routes:
+    # ... código do chat
 
 # ---------------------------
 # CHAT COM IA
 # ---------------------------
     st.subheader("💬 Chat com a IA sobre a rota")
 
-if "route_v1" in st.session_state and "route_v2" in st.session_state:
-
-    route_v1 = st.session_state.route_v1
-    route_v2 = st.session_state.route_v2
-
+# Substituir no chat:
+# Substituir no chat:
+if "best_routes" in st.session_state and st.session_state.best_routes:
+    # Extrair TODAS as rotas dinamicamente
+    all_routes = st.session_state.best_routes
+    
+    # Para o chat, passar todas as rotas como uma lista
+    all_route_coords = []
+    for vehicle_id, route_coords in all_routes.items():
+        if vehicle_id.endswith("_coords"):
+            all_route_coords.extend(route_coords)
+    
+    # Usar a rota combinada para o chat
+    route_v1 = all_route_coords
+    route_v2 = []  # Vazio, já que usamos todas em route_v1
     # Inicializa histórico
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
