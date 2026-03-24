@@ -255,6 +255,7 @@ def llm_generate_driver_instructions(
     demands: Dict[int, int],
     vehicle_capacity: float,
     depot_coords: Tuple[float, float],
+    vehicle_max_autonomy: Optional[float] = None,
     provider: Optional[str] = None,
 ) -> str:
     """
@@ -292,6 +293,9 @@ CAPACIDADE DOS VEÍCULOS: {vehicle_capacity} unidades
 
 CARGA POR VEÍCULO:
 {json.dumps(vehicle_loads, ensure_ascii=False, indent=2)}
+
+CAPACIDADE DOS VEÍCULOS: {vehicle_capacity} unidades
+AUTONOMIA MÁXIMA: {vehicle_max_autonomy or "não especificada"} unidades
 
 Coordenadas do Depósito: {depot_coords}
 
