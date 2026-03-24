@@ -195,53 +195,118 @@ def _std(values: List[float]) -> float:
 def split_deliveries_multi_vehicles(
     path: List[Tuple[float, float]],
     depot_coords: Tuple[float, float],
-    n_vehicles: int = 2
+    n_vehicles: int = 2,
+    demands: Dict[int, int] = None,
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    vehicle_capacity: float = None,
 ) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
     """
     Divide entregas entre N veículos usando estratégia adaptativa.
-    - 2 veículos: corte por mediana (ótimo)
-    - 3+ veículos: divisão sequencial balanceada
+    - 2 veículos: corte por mediana + balanceamento por capacidade
+    - 3+ veículos: divisão sequencial balanceada por capacidade
     """
     deliveries = [p for p in path if p != depot_coords]
     
     if not deliveries:
         return [[] for _ in range(n_vehicles)], {"strategy": "empty", "fallback": False}
     
-    # Estratégia para 2 veículos (mantém lógica otimizada)
+    use_capacity = (
+        demands is not None and
+        city_to_id_map is not None and
+        vehicle_capacity is not None and
+        vehicle_capacity > 0
+    )
+    
     if n_vehicles == 2:
-        vehicles_routes, split_info = _split_by_median(deliveries, depot_coords)
+        vehicles_routes, split_info = _split_by_median(
+            deliveries, depot_coords,
+            demands=demands, city_to_id_map=city_to_id_map,
+            vehicle_capacity=vehicle_capacity, use_capacity=use_capacity
+        )
         return vehicles_routes, split_info
     
-    # Estratégia para 3+ veículos
-    return _split_sequential(deliveries, n_vehicles)
+    return _split_sequential(
+        deliveries, n_vehicles,
+        demands=demands, city_to_id_map=city_to_id_map,
+        vehicle_capacity=vehicle_capacity, use_capacity=use_capacity
+    )
 
 
 def _split_by_median(
-    deliveries: List[Tuple[float, float]], 
-    depot_coords: Tuple[float, float]
+    deliveries: List[Tuple[float, float]],
+    depot_coords: Tuple[float, float],
+    demands: Dict[int, int] = None,
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    vehicle_capacity: float = None,
+    use_capacity: bool = False,
 ) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
-    """Divisão por mediana (para 2 veículos)"""
+    """
+    Divisão por mediana (para 2 veículos).
+    Se use_capacity=True, distribui por capacidade para evitar estouro.
+    """
     dx = [p[0] - depot_coords[0] for p in deliveries]
     dy = [p[1] - depot_coords[1] for p in deliveries]
     
     use_x = _std(dx) >= _std(dy)
     axis = "x" if use_x else "y"
-    
     axis_values = [p[0] if use_x else p[1] for p in deliveries]
     threshold = _median(axis_values)
     
+    # Ordena por eixo para manter coerência geográfica
+    sorted_pairs = sorted(zip(deliveries, axis_values), key=lambda x: x[1])
+    
     vehicle_1 = []
     vehicle_2 = []
-    
-    for p in deliveries:
-        v = p[0] if use_x else p[1]
-        if v <= threshold:
-            vehicle_1.append(p)
-        else:
-            vehicle_2.append(p)
-    
-    # fallback para evitar grupo vazio
+    load_1 = 0.0
+    load_2 = 0.0
     fallback = False
+    
+    def _demand(coord: Tuple[float, float]) -> float:
+        if not use_capacity or not city_to_id_map or not demands:
+            return 0.0
+        cid = city_to_id_map.get(coord, 0)
+        return float(demands.get(cid, 0))
+    
+    if use_capacity and vehicle_capacity and vehicle_capacity > 0:
+        # Distribuição por capacidade na ORDEM DO PATH (não axis) — o GA otimiza o path,
+        # então o split deve depender da ordem para que fitness varie entre indivíduos
+        cap = float(vehicle_capacity)
+        for p in deliveries:
+            d = _demand(p)
+            # Coloca no veículo que tem mais espaço e que comporta a demanda
+            fits_1 = load_1 + d <= cap
+            fits_2 = load_2 + d <= cap
+            if fits_1 and fits_2:
+                # Ambos comportam: escolhe o com menor carga (balanceia)
+                if load_1 <= load_2:
+                    vehicle_1.append(p)
+                    load_1 += d
+                else:
+                    vehicle_2.append(p)
+                    load_2 += d
+            elif fits_1:
+                vehicle_1.append(p)
+                load_1 += d
+            elif fits_2:
+                vehicle_2.append(p)
+                load_2 += d
+            else:
+                # Nenhum comporta (entrega única > capacidade): coloca no menos carregado
+                fallback = True
+                if load_1 <= load_2:
+                    vehicle_1.append(p)
+                    load_1 += d
+                else:
+                    vehicle_2.append(p)
+                    load_2 += d
+    else:
+        # Comportamento original: corte por mediana
+        for p, v in sorted_pairs:
+            if v <= threshold:
+                vehicle_1.append(p)
+            else:
+                vehicle_2.append(p)
+    
     if len(vehicle_1) == 0 or len(vehicle_2) == 0:
         fallback = True
         vehicle_1, vehicle_2 = [], []
@@ -255,19 +320,51 @@ def _split_by_median(
 
 
 def _split_sequential(
-    deliveries: List[Tuple[float, float]], 
-    n_vehicles: int
+    deliveries: List[Tuple[float, float]],
+    n_vehicles: int,
+    demands: Dict[int, int] = None,
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    vehicle_capacity: float = None,
+    use_capacity: bool = False,
 ) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
-    """Divisão sequencial balanceada (para 3+ veículos)"""
+    """Divisão sequencial balanceada (para 3+ veículos), respeitando capacidade quando disponível."""
     vehicles = [[] for _ in range(n_vehicles)]
+    loads = [0.0] * n_vehicles
     
-    # Distribui pontos sequencialmente
-    for i, point in enumerate(deliveries):
-        vehicle_idx = i % n_vehicles
-        vehicles[vehicle_idx].append(point)
+    def _demand(coord: Tuple[float, float]) -> float:
+        if not use_capacity or not city_to_id_map or not demands:
+            return 0.0
+        cid = city_to_id_map.get(coord, 0)
+        return float(demands.get(cid, 0))
     
-    # Balanceamento: move pontos se algum veículo ficar vazio
+    cap = float(vehicle_capacity) if (use_capacity and vehicle_capacity and vehicle_capacity > 0) else float("inf")
     fallback = False
+    
+    for i, point in enumerate(deliveries):
+        d = _demand(point)
+        if use_capacity and cap < float("inf"):
+            # Encontra o veículo com menor carga que comporta
+            best_idx = None
+            best_load = float("inf")
+            for j in range(n_vehicles):
+                if loads[j] + d <= cap and loads[j] < best_load:
+                    best_idx = j
+                    best_load = loads[j]
+            if best_idx is not None:
+                vehicles[best_idx].append(point)
+                loads[best_idx] += d
+            else:
+                # Nenhum comporta: coloca no menos carregado
+                fallback = True
+                idx = min(range(n_vehicles), key=lambda j: loads[j])
+                vehicles[idx].append(point)
+                loads[idx] += d
+        else:
+            # Sequencial simples (round-robin)
+            idx = i % n_vehicles
+            vehicles[idx].append(point)
+            loads[idx] += d
+    
     for i in range(n_vehicles):
         if not vehicles[i]:
             fallback = True
@@ -302,9 +399,11 @@ def calculate_fitness(
     w_cap = float(weights.get("capacity", 0.2))
     w_auto = float(weights.get("autonomy", 0.2))
     
-    # Divide as rotas entre os veículos
+    # Divide as rotas entre os veículos (respeitando capacidade)
     vehicles_routes, split_info = split_deliveries_multi_vehicles(
-        path, hospital_coords, n_vehicles
+        path, hospital_coords, n_vehicles,
+        demands=demands, city_to_id_map=city_to_id_map,
+        vehicle_capacity=vehicle_capacity,
     )
     
     # Calcula métricas totais

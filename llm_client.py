@@ -151,6 +151,7 @@ Regras de saída (obrigatórias):
 - weights.* devem ser números >= 0.
 - Se fornecer weights, prefira que somem ~ 1.0.
 - NÃO zere explicitamente pesos (0.0) a menos que o usuário peça para ignorar aquele critério.
+- PARA GARANTIR EVOLUÇÃO do algoritmo: use n_generations >= 100, mutation_prob entre 0.3 e 0.5, population_size >= 100. Só use valores menores se o usuário pedir explicitamente "mais rápido" ou "estabilidade".
 
 Guia de mapeamento (use como heurística):
 - “mais rápida / menor distância” -> aumentar weights.distance, reduzir weights.priority (mas não zerar).
@@ -161,10 +162,10 @@ Guia de mapeamento (use como heurística):
 
 Exemplos:
 Usuário: "Quero priorizar urgência mais que distância"
-Saída (exemplo): {{"weights": {{"distance": 0.2, "priority": 0.7, "capacity": 0.1}}, "mutation_prob": 0.2, "n_generations": 80}}
+Saída (exemplo): {{"weights": {{"distance": 0.2, "priority": 0.7, "capacity": 0.1}}, "mutation_prob": 0.35, "n_generations": 120, "population_size": 100}}
 
 Usuário: "Meu carro aguenta pouco, mas ainda quero uma rota curta"
-Saída (exemplo): {{"vehicle_capacity": 10, "weights": {{"distance": 0.4, "priority": 0.2, "capacity": 0.4}}}}
+Saída (exemplo): {{"vehicle_capacity": 10, "weights": {{"distance": 0.4, "priority": 0.2, "capacity": 0.4}}, "mutation_prob": 0.35, "n_generations": 120}}
 
 Usuário: "Quero mais exploração, tenta achar soluções diferentes"
 Saída (exemplo): {{"mutation_prob": 0.45, "n_generations": 120, "top_for_selection": 6, "weights": {{"distance": 0.3, "priority": 0.5, "capacity": 0.2}}}}

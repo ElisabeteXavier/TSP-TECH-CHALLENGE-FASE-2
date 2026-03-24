@@ -4,8 +4,8 @@ from hospital_data import VEHICLE_CAPACITY
 
 CONFIG_SCHEMA_EXAMPLE: Dict[str, Any] = {
     "population_size": 100,
-    "n_generations": 80,
-    "mutation_prob": 0.3,
+    "n_generations": 120,
+    "mutation_prob": 0.35,
     "top_for_selection": 10,
     "vehicle_capacity": 15,
     "n_vehicles": 2,

@@ -69,8 +69,10 @@ if mode == "🤖 IA (texto)":
         "Descreva o objetivo:",
         placeholder="Ex: priorizar urgência mais que distância"
     )
+    generations = st.slider("Gerações", 20, 1000, 120, step=10, key="ia_generations", help="Padrão 120 para melhor evolução do algoritmo")
     config = {
         "n_vehicles": n_vehicles,
+        "n_generations": generations,
         "vehicle_max_autonomy": VEHICLE_MAX_AUTONOMY
     }
 else:
@@ -148,8 +150,14 @@ def plot_routes(depot, routes_dict):
 if run:
     with st.spinner("Rodando otimização... 🤖"):
         try:
-            if objective:
-                config = llm_to_config(objective)
+            if mode == "🤖 IA (texto)" and objective:
+                llm_config = llm_to_config(objective)
+                config = {**llm_config, **config}
+                # Slider de gerações no modo IA sobrescreve o sugerido pela LLM
+                config["n_generations"] = generations
+                # Garante parâmetros mínimos para evolução (evita linha plana)
+                config["mutation_prob"] = max(config.get("mutation_prob", 0.35), 0.3)
+                config["population_size"] = max(config.get("population_size", 100), 100)
 
             if "vehicle_max_autonomy" not in config:
                 config["vehicle_max_autonomy"] = VEHICLE_MAX_AUTONOMY
@@ -201,9 +209,21 @@ if run:
     # ---------------------------
     # EVOLUÇÃO
     # ---------------------------
-    st.subheader("📈 Evolução")
+    n_vehicles_result = len([k for k in result.get("best_routes", {}).keys() if k.endswith("_coords")])
+    st.subheader(f"📈 Evolução ({n_vehicles_result} veículo{'s' if n_vehicles_result != 1 else ''})")
     history = result.get("history", {}).get("best_fitness_by_generation", [])
-    st.line_chart(history)
+    if history:
+        fig_evo, ax_evo = plt.subplots(figsize=(10, 4))
+        ax_evo.plot(range(1, len(history) + 1), history, color="#1f77b4", linewidth=2)
+        ax_evo.set_xlabel("Geração")
+        ax_evo.set_ylabel("Fitness (menor = melhor)")
+        ax_evo.set_title("Melhor fitness por geração")
+        ax_evo.grid(alpha=0.3)
+        ax_evo.set_xlim(1, len(history))
+        st.pyplot(fig_evo)
+        plt.close(fig_evo)
+    else:
+        st.info("Nenhum histórico de evolução disponível.")
 
     # ---------------------------
     # ROTAS
