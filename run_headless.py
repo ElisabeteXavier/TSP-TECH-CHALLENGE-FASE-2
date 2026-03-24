@@ -71,8 +71,7 @@ def normalize_config(user_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     cfg["top_for_selection"] = max(2, _as_int(cfg.get("top_for_selection"), DEFAULT_CONFIG["top_for_selection"]))
     cfg["vehicle_capacity"] = _as_float(cfg.get("vehicle_capacity"), DEFAULT_CONFIG["vehicle_capacity"])
     cfg["n_vehicles"] = max(1, min(5, _as_int(cfg.get("n_vehicles"), DEFAULT_CONFIG["n_vehicles"])))
-    cfg["vehicle_max_autonomy"] = _as_float(cfg.get("vehicle_max_autonomy"),DEFAULT_CONFIG.get("vehicle_max_autonomy", 999999)
-)
+    cfg["vehicle_max_autonomy"] = _as_float(cfg.get("vehicle_max_autonomy"), DEFAULT_CONFIG.get("vehicle_max_autonomy", 999999))
 
     weights = cfg.get("weights") if isinstance(cfg.get("weights"), dict) else {}
 
