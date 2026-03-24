@@ -2,7 +2,7 @@
 
 > Veja o funcionamento completo do sistema (Streamlit + Pygame + CLI):
 
-[Assista no YouTube](https://www.youtube.com/watch?v=LINKYOUTUBE)
+[Assista no YouTube](https://youtu.be/-iPG0klfRGY)
 
 ---
 
