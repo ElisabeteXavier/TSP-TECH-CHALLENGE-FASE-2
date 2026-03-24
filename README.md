@@ -72,7 +72,7 @@ Cada solução é avaliada com base em uma função de fitness multiobjetivo que
 
 ## 🎯 Objetivo
 
-Encontrar, por meio de Algoritmo Genético, rotas eficientes para dois veículos:
+Encontrar, por meio de Algoritmo Genético, rotas eficientes para multiplos veículos:
 
 - Veículo 1: `depot -> a -> b -> c -> depot`
 - Veículo 2: `depot -> d -> e -> f -> depot`
