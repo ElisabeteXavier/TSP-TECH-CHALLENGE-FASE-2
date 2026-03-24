@@ -2,15 +2,18 @@ import pygame
 from pygame.locals import *
 import random
 import itertools
-from genetic_algorithm import mutate, order_crossover, criate_population, calculate_fitness, sort_population, default_problems, build_distance_matrix
-from draw_functions import draw_paths, draw_plot, draw_cities
+from genetic_algorithm import (
+    mutate, order_crossover, criate_population, calculate_fitness,
+    sort_population, default_problems, build_distance_matrix, split_deliveries_two_vehicles
+)
+from draw_functions import draw_paths, draw_plot, draw_cities,draw_cities_with_priority
 from hospital_data import *
 import sys
 import numpy as np
 import pygame
 from benchmark_att48 import *
-
-
+from llm_client import ask_llm_about_route
+import openai
 
 # Define constant values
 # pygame
@@ -32,6 +35,7 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
+GREEN = (0, 160, 0)
 
 
 # Initialize problem
@@ -78,6 +82,12 @@ best_solutions = []
 city_to_id_map = {location: i for i, location in enumerate(cities_locations)}
 distance_matrix = build_distance_matrix(cities_locations)
 
+def serialize_route_for_llm(route):
+    """
+    Recebe uma lista de coordenadas e retorna uma string formatada para LLM.
+    """
+    return " -> ".join([f"({x},{y})" for (x, y) in route])
+
 # Main game loop
 running = True
 while running:
@@ -87,19 +97,40 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_q:
                 running = False
+            elif event.key == pygame.K_c:  # 'c' de chat
+                print("\n--- Interface Natural ---")
+                pergunta = input("Faça sua pergunta sobre a rota: ")
+            
+                # Separe as rotas dos dois motoristas
+                route_v1, route_v2, split_info = split_deliveries_two_vehicles(best_solution, HOSPITAL_COORDS)
+                rota1_texto = serialize_route_for_llm([HOSPITAL_COORDS] + route_v1)
+                rota2_texto = serialize_route_for_llm([HOSPITAL_COORDS] + route_v2)
+            
+                # Monte o contexto para a IA
+                contexto = (
+                    f"Rota do motorista 1: {rota1_texto}\n"
+                    f"Rota do motorista 2: {rota2_texto}\n\n"
+                    f"Pergunta: {pergunta}"
+                )
+                resposta = ask_llm_about_route(pergunta, contexto)
+                print(f"\nResposta da IA: {resposta}")
 
     generation = next(generation_counter)
 
     screen.fill(WHITE)
 
     population_fitness = [calculate_fitness(
-        individual, priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix
+        individual, priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix,
+        demands=demands, vehicle_capacity=VEHICLE_CAPACITY
     ) for individual in population]
 
     population, population_fitness = sort_population(
         population,  population_fitness)
 
-    best_fitness = calculate_fitness(population[0], priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix)
+    best_fitness = calculate_fitness(
+        population[0], priorities, city_to_id_map, HOSPITAL_COORDS, distance_matrix,
+        demands=demands, vehicle_capacity=VEHICLE_CAPACITY
+    )
     best_solution = population[0]
 
     best_fitness_values.append(best_fitness)
@@ -108,10 +139,28 @@ while running:
     draw_plot(screen, list(range(len(best_fitness_values))),
               best_fitness_values, y_label="Fitness - Distance (pxls)")
 
-    draw_cities(screen, cities_locations[1:], RED, NODE_RADIUS)  # cidades
-    draw_cities(screen, [HOSPITAL_COORDS], BLACK, NODE_RADIUS)   # hospital
-    draw_paths(screen, best_solution, BLUE, width=3)
-    draw_paths(screen, population[1], rgb_color=(128, 128, 128), width=1)
+    draw_cities_with_priority(
+    screen,
+    cities_locations,
+    priorities,
+    HOSPITAL_COORDS,
+    NODE_RADIUS
+)
+    route_v1, route_v2, split_info = split_deliveries_two_vehicles(best_solution, HOSPITAL_COORDS)
+
+    path_v1 = [HOSPITAL_COORDS] + route_v1
+    path_v2 = [HOSPITAL_COORDS] + route_v2
+
+    if len(path_v1) >= 2:
+        draw_paths(screen, path_v1, BLUE, width=3)
+
+    if len(path_v2) >= 2:
+        draw_paths(screen, path_v2, GREEN, width=3)
+
+    if len(population) > 1:
+        draw_paths(screen, population[1], rgb_color=(128, 128, 128), width=1)
+
+    
 
     print(f"Generation {generation}: Best fitness = {round(best_fitness, 2)}")
 
@@ -143,7 +192,6 @@ while running:
 
     pygame.display.flip()
     clock.tick(FPS)
-
 
 # TODO: save the best individual in a file if it is better than the one saved.
 

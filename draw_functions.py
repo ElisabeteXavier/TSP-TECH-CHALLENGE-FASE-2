@@ -31,6 +31,8 @@ def draw_plot(screen: pygame.Surface, x: list, y: list, x_label: str = 'Generati
     ax.set_ylabel(y_label)
     ax.set_xlabel(x_label)
     plt.tight_layout()
+    plt.show()
+    plt.close(fig)
 
     canvas = FigureCanvasAgg(fig)
     canvas.draw()
@@ -57,7 +59,35 @@ def draw_cities(screen: pygame.Surface, cities_locations: List[Tuple[int, int]],
     for city_location in cities_locations:
         pygame.draw.circle(screen, rgb_color, city_location, node_radius)
 
+def get_color_by_priority(priority: int):
+    if priority == 0:
+        return (255, 0, 0)      # 🔴 crítico
+    elif priority == 1:
+        return (255, 255, 0)    # 🟡 médio
+    elif priority == 2:
+        return (0, 255, 0)      # 🟢 baixo
+    else:
+        return (200, 200, 200)
 
+def draw_cities_with_priority(
+    screen: pygame.Surface,
+    cities_locations,
+    priorities,
+    HOSPITAL_COORDS,
+    node_radius
+):
+    for i, city_location in enumerate(cities_locations):
+
+        # hospital (índice 0)
+        if city_location == HOSPITAL_COORDS:
+            color = (0, 0, 0)  # 🔵 hospital
+            radius = node_radius + 2
+        else:
+            priority = priorities.get(i, 0)
+            color = get_color_by_priority(priority)
+            radius = node_radius
+
+        pygame.draw.circle(screen, color, city_location, radius)
 
 def draw_paths(screen: pygame.Surface, path: List[Tuple[int, int]], rgb_color: Tuple[int, int, int], width: int = 1):
     """

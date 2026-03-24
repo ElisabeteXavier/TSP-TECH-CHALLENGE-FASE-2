@@ -1,7 +1,7 @@
 import random
 import math
 import copy 
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 
 default_problems = {
 5: [(733, 251), (706, 87), (546, 97), (562, 49), (576, 253)],
@@ -42,18 +42,6 @@ def generate_random_population(cities_location: List[Tuple[float, float]], popul
     """
     return [random.sample(cities_location, len(cities_location)) for _ in range(population_size)]
 
-
-# ---------------------------------------------------------------------------
-# MATRIZ DE DISTÂNCIAS (Aula 4 - Representação de Indivíduos e Codificação)
-# ---------------------------------------------------------------------------
-# Hoje: a cada avaliação de fitness calculamos a distância euclidiana entre
-# cada par de cidades consecutivas na rota. A mesma distância entre duas
-# cidades é recalculada muitas vezes (em cada indivíduo, em cada geração).
-#
-# Solução da aula: pré-calcular uma MATRIZ DE DISTÂNCIAS D[n][n] no início,
-# onde D[i][j] = distância entre cidade i e cidade j. Na hora do fitness,
-# só consultar D[i][j] em vez de recalcular. Menos operações = execução mais rápida.
-# ---------------------------------------------------------------------------
 
 def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
     """
@@ -135,6 +123,7 @@ def generate_route_knn(hospitais):
 
     return rota
 
+
 def calculate_priority_penalty(
     path: List[Tuple[float, float]], 
     priorities: Dict[int, int], 
@@ -164,27 +153,324 @@ def calculate_priority_penalty(
     return total_penalty
 
 
+def calculate_capacity_penalty(
+    path: List[Tuple[float, float]],
+    demands: Dict[int, int],
+    city_to_id_map: Dict[Tuple[float, float], int],
+    hospital_coords: Tuple[float, float],
+    vehicle_capacity: float,
+) -> float:
+    """
+    Penalidade por estourar a capacidade do veículo (não matar a solução).
+    Carga total da rota = soma das demandas dos pontos da rota.
+    Retorna 0 se carga_total <= vehicle_capacity; senão retorna o excesso (carga_total - vehicle_capacity).
+    """
+    deliveries = [c for c in path if c != hospital_coords]
+    carga_total = 0.0
+    for city_coords in deliveries:
+        cid = city_to_id_map.get(city_coords)
+        if cid is not None:
+            carga_total += demands.get(cid, 0)
+    excesso = carga_total - vehicle_capacity
+    return max(0.0, excesso)
+
+def _median(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(s[mid])
+    return float((s[mid - 1] + s[mid]) / 2.0)
+
+
+def _std(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    var = sum((v - mean) ** 2 for v in values) / len(values)
+    return math.sqrt(var)
+
+def split_deliveries_multi_vehicles(
+    path: List[Tuple[float, float]],
+    depot_coords: Tuple[float, float],
+    n_vehicles: int = 2,
+    demands: Dict[int, int] = None,
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    vehicle_capacity: float = None,
+) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    """
+    Divide entregas entre N veículos usando estratégia adaptativa.
+    - 2 veículos: corte por mediana + balanceamento por capacidade
+    - 3+ veículos: divisão sequencial balanceada por capacidade
+    """
+    deliveries = [p for p in path if p != depot_coords]
+    
+    if not deliveries:
+        return [[] for _ in range(n_vehicles)], {"strategy": "empty", "fallback": False}
+    
+    use_capacity = (
+        demands is not None and
+        city_to_id_map is not None and
+        vehicle_capacity is not None and
+        vehicle_capacity > 0
+    )
+    
+    if n_vehicles == 2:
+        vehicles_routes, split_info = _split_by_median(
+            deliveries, depot_coords,
+            demands=demands, city_to_id_map=city_to_id_map,
+            vehicle_capacity=vehicle_capacity, use_capacity=use_capacity
+        )
+        return vehicles_routes, split_info
+    
+    return _split_sequential(
+        deliveries, n_vehicles,
+        demands=demands, city_to_id_map=city_to_id_map,
+        vehicle_capacity=vehicle_capacity, use_capacity=use_capacity
+    )
+
+
+def _split_by_median(
+    deliveries: List[Tuple[float, float]],
+    depot_coords: Tuple[float, float],
+    demands: Dict[int, int] = None,
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    vehicle_capacity: float = None,
+    use_capacity: bool = False,
+) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    """
+    Divisão por mediana (para 2 veículos).
+    Se use_capacity=True, distribui por capacidade para evitar estouro.
+    """
+    dx = [p[0] - depot_coords[0] for p in deliveries]
+    dy = [p[1] - depot_coords[1] for p in deliveries]
+    
+    use_x = _std(dx) >= _std(dy)
+    axis = "x" if use_x else "y"
+    axis_values = [p[0] if use_x else p[1] for p in deliveries]
+    threshold = _median(axis_values)
+    
+    # Ordena por eixo para manter coerência geográfica
+    sorted_pairs = sorted(zip(deliveries, axis_values), key=lambda x: x[1])
+    
+    vehicle_1 = []
+    vehicle_2 = []
+    load_1 = 0.0
+    load_2 = 0.0
+    fallback = False
+    
+    def _demand(coord: Tuple[float, float]) -> float:
+        if not use_capacity or not city_to_id_map or not demands:
+            return 0.0
+        cid = city_to_id_map.get(coord, 0)
+        return float(demands.get(cid, 0))
+    
+    if use_capacity and vehicle_capacity and vehicle_capacity > 0:
+        # Distribuição por capacidade na ORDEM DO PATH (não axis) — o GA otimiza o path,
+        # então o split deve depender da ordem para que fitness varie entre indivíduos
+        cap = float(vehicle_capacity)
+        for p in deliveries:
+            d = _demand(p)
+            # Coloca no veículo que tem mais espaço e que comporta a demanda
+            fits_1 = load_1 + d <= cap
+            fits_2 = load_2 + d <= cap
+            if fits_1 and fits_2:
+                # Ambos comportam: escolhe o com menor carga (balanceia)
+                if load_1 <= load_2:
+                    vehicle_1.append(p)
+                    load_1 += d
+                else:
+                    vehicle_2.append(p)
+                    load_2 += d
+            elif fits_1:
+                vehicle_1.append(p)
+                load_1 += d
+            elif fits_2:
+                vehicle_2.append(p)
+                load_2 += d
+            else:
+                # Nenhum comporta (entrega única > capacidade): coloca no menos carregado
+                fallback = True
+                if load_1 <= load_2:
+                    vehicle_1.append(p)
+                    load_1 += d
+                else:
+                    vehicle_2.append(p)
+                    load_2 += d
+    else:
+        # Comportamento original: corte por mediana
+        for p, v in sorted_pairs:
+            if v <= threshold:
+                vehicle_1.append(p)
+            else:
+                vehicle_2.append(p)
+    
+    if len(vehicle_1) == 0 or len(vehicle_2) == 0:
+        fallback = True
+        vehicle_1, vehicle_2 = [], []
+        for i, p in enumerate(deliveries):
+            if i % 2 == 0:
+                vehicle_1.append(p)
+            else:
+                vehicle_2.append(p)
+    
+    return [vehicle_1, vehicle_2], {"axis": axis, "threshold": threshold, "fallback": fallback}
+
+
+def _split_sequential(
+    deliveries: List[Tuple[float, float]],
+    n_vehicles: int,
+    demands: Dict[int, int] = None,
+    city_to_id_map: Dict[Tuple[float, float], int] = None,
+    vehicle_capacity: float = None,
+    use_capacity: bool = False,
+) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    """Divisão sequencial balanceada (para 3+ veículos), respeitando capacidade quando disponível."""
+    vehicles = [[] for _ in range(n_vehicles)]
+    loads = [0.0] * n_vehicles
+    
+    def _demand(coord: Tuple[float, float]) -> float:
+        if not use_capacity or not city_to_id_map or not demands:
+            return 0.0
+        cid = city_to_id_map.get(coord, 0)
+        return float(demands.get(cid, 0))
+    
+    cap = float(vehicle_capacity) if (use_capacity and vehicle_capacity and vehicle_capacity > 0) else float("inf")
+    fallback = False
+    
+    for i, point in enumerate(deliveries):
+        d = _demand(point)
+        if use_capacity and cap < float("inf"):
+            # Encontra o veículo com menor carga que comporta
+            best_idx = None
+            best_load = float("inf")
+            for j in range(n_vehicles):
+                if loads[j] + d <= cap and loads[j] < best_load:
+                    best_idx = j
+                    best_load = loads[j]
+            if best_idx is not None:
+                vehicles[best_idx].append(point)
+                loads[best_idx] += d
+            else:
+                # Nenhum comporta: coloca no menos carregado
+                fallback = True
+                idx = min(range(n_vehicles), key=lambda j: loads[j])
+                vehicles[idx].append(point)
+                loads[idx] += d
+        else:
+            # Sequencial simples (round-robin)
+            idx = i % n_vehicles
+            vehicles[idx].append(point)
+            loads[idx] += d
+    
+    for i in range(n_vehicles):
+        if not vehicles[i]:
+            fallback = True
+            max_idx = max(range(n_vehicles), key=lambda j: len(vehicles[j]))
+            if vehicles[max_idx]:
+                point = vehicles[max_idx].pop()
+                vehicles[i].append(point)
+    
+    return vehicles, {"strategy": "sequential", "fallback": fallback}
+
+
 def calculate_fitness(
     path: List[Tuple[float, float]],
     priorities: Dict[int, int],
     city_to_id_map: Dict[Tuple[float, float], int],
     hospital_coords: Tuple[float, float],
     distance_matrix: List[List[float]] = None,
-) -> float:
-    """Fitness = 0.3*distância + 0.7*penalidade_prioridade. Usa matriz de distâncias se fornecida."""
-    distancia = calculate_total_distance(
-        path, hospital_coords,
-        city_to_id_map=city_to_id_map,
-        distance_matrix=distance_matrix,
+    demands: Dict[int, int] = None,
+    vehicle_capacity: float = None,
+    weights: Dict[str, float] = None,
+    vehicle_max_autonomy: float = None, 
+    n_vehicles: int = 2,
+) -> Dict[str, Any]:
+    """
+    Fitness unificado para qualquer número de veículos.
+    """
+    if weights is None:
+        weights = {}
+    
+    w_dist = float(weights.get("distance", 0.3))
+    w_prio = float(weights.get("priority", 0.5 if (demands is not None and vehicle_capacity is not None) else 0.7))
+    w_cap = float(weights.get("capacity", 0.2))
+    w_auto = float(weights.get("autonomy", 0.2))
+    
+    # Divide as rotas entre os veículos (respeitando capacidade)
+    vehicles_routes, split_info = split_deliveries_multi_vehicles(
+        path, hospital_coords, n_vehicles,
+        demands=demands, city_to_id_map=city_to_id_map,
+        vehicle_capacity=vehicle_capacity,
     )
-    prioridade = calculate_priority_penalty(path, priorities, city_to_id_map, hospital_coords)
-    # TODO:  prioridade = calculate_priority_penalty, capacidade_carga, 
-    # autonomia, multiplos veículos, fitness com pesos
+    
+    # Calcula métricas totais
+    total_distance = 0.0
+    total_priority_penalty = 0.0
+    total_capacity_penalty = 0.0
+    total_autonomy_penalty = 0.0
+    
+    routes_dict = {}
+    metrics_dict = {"total_distance": 0.0, "priority_penalty": 0.0, "capacity_penalty": 0.0}
+    
+    for i, route in enumerate(vehicles_routes):
+        vehicle_id = f"vehicle_{i+1}"
+        routes_dict[vehicle_id] = route
+        
+        if route:
+            dist = calculate_total_distance(
+            route, hospital_coords,
+            city_to_id_map=city_to_id_map,
+            distance_matrix=distance_matrix
+        )
 
-    fitness = 0.3*distancia + 0.7 * prioridade
+        if vehicle_max_autonomy is not None:
+            autonomy_penalty = calculate_autonomy_penalty(
+                dist,
+                vehicle_max_autonomy
+            )
+            total_autonomy_penalty += autonomy_penalty
 
-    return fitness
-
+            prio = calculate_priority_penalty(route, priorities, city_to_id_map, hospital_coords)
+            
+            total_distance += dist
+            total_priority_penalty += prio
+            
+            metrics_dict[f"distance_v{i+1}"] = float(dist)
+            
+            if demands is not None and vehicle_capacity is not None:
+                cap = calculate_capacity_penalty(route, demands, city_to_id_map, hospital_coords, vehicle_capacity)
+                total_capacity_penalty += cap
+        else:
+            metrics_dict[f"distance_v{i+1}"] = 0.0
+    
+    metrics_dict["total_distance"] = total_distance
+    metrics_dict["priority_penalty"] = total_priority_penalty  
+    metrics_dict["capacity_penalty"] = total_capacity_penalty
+    metrics_dict["autonomy_penalty"] = total_autonomy_penalty
+    
+    # Calcula fitness final
+    if demands is not None and vehicle_capacity is not None:
+        fitness = (
+            w_dist * total_distance +
+            w_prio * total_priority_penalty +
+            w_cap * total_capacity_penalty +
+            w_auto * total_autonomy_penalty
+        )
+    else:
+        fitness = w_dist * total_distance + w_prio * total_priority_penalty
+    
+    return {
+        "fitness": float(fitness),
+        "split": split_info,
+        "routes": routes_dict,
+        "metrics": {
+            **metrics_dict,
+            "fitness_final": float(fitness),
+        },
+    }
 
 def order_crossover(parent1: List[Tuple[float, float]], parent2: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """
@@ -215,34 +501,7 @@ def order_crossover(parent1: List[Tuple[float, float]], parent2: List[Tuple[floa
 
     return child
 
-### demonstration: crossover test code
-# Example usage:
-# parent1 = [(1, 1), (2, 2), (3, 3), (4,4), (5,5), (6, 6)]
-# parent2 = [(6, 6), (5, 5), (4, 4), (3, 3),  (2, 2), (1, 1)]
 
-# # parent1 = [1, 2, 3, 4, 5, 6]
-# # parent2 = [6, 5, 4, 3, 2, 1]
-
-
-# child = order_crossover(parent1, parent2)
-# print("Parent 1:", [0, 1, 2, 3, 4, 5, 6, 7, 8])
-# print("Parent 1:", parent1)
-# print("Parent 2:", parent2)
-# print("Child   :", child)
-
-
-# # Example usage:
-# population = generate_random_population(5, 10)
-
-# print(calculate_fitness(population[0]))
-
-
-# population = [(random.randint(0, 100), random.randint(0, 100))
-#           for _ in range(3)]
-
-
-
-# TODO: implement a mutation_intensity and invert pieces of code instead of just swamping two. 
 def mutate(solution:  List[Tuple[float, float]], mutation_probability: float) ->  List[Tuple[float, float]]:
     """
     Mutate a solution by inverting a segment of the sequence with a given mutation probability.
@@ -271,15 +530,6 @@ def mutate(solution:  List[Tuple[float, float]], mutation_probability: float) ->
         
     return mutated_solution
 
-### Demonstration: mutation test code    
-# # Example usage:
-# original_solution = [(1, 1), (2, 2), (3, 3), (4, 4)]
-# mutation_probability = 1
-
-# mutated_solution = mutate(original_solution, mutation_probability)
-# print("Original Solution:", original_solution)
-# print("Mutated Solution:", mutated_solution)
-
 
 def sort_population(population: List[List[Tuple[float, float]]], fitness: List[float]) -> Tuple[List[List[Tuple[float, float]]], List[float]]:
     """
@@ -304,55 +554,11 @@ def sort_population(population: List[List[Tuple[float, float]]], fitness: List[f
     return sorted_population, sorted_fitness
 
 
-# if __name__ == '__main__':
-#     N_CITIES = 10
-    
-#     POPULATION_SIZE = 100
-#     N_GENERATIONS = 100
-#     MUTATION_PROBABILITY = 0.3
-#     cities_locations = [(random.randint(0, 100), random.randint(0, 100))
-#               for _ in range(N_CITIES)]
-    
-#     # CREATE INITIAL POPULATION
-#     population = generate_random_population(cities_locations, POPULATION_SIZE)
+def calculate_autonomy_penalty(route_distance, max_autonomy, weight=10):
+    if route_distance <= max_autonomy:
+        return 0
 
-#     # Lists to store best fitness and generation for plotting
-#     best_fitness_values = []
-#     best_solutions = []
-    
-#     for generation in range(N_GENERATIONS):
-  
-        
-#         population_fitness = [calculate_fitness(individual) for individual in population]    
-        
-#         population, population_fitness = sort_population(population,  population_fitness)
-        
-#         best_fitness = calculate_fitness(population[0])
-#         best_solution = population[0]
-           
-#         best_fitness_values.append(best_fitness)
-#         best_solutions.append(best_solution)    
+    excess_ratio = (route_distance - max_autonomy) / max_autonomy
 
-#         print(f"Generation {generation}: Best fitness = {best_fitness}")
-
-#         new_population = [population[0]]  # Keep the best individual: ELITISM
-        
-#         while len(new_population) < POPULATION_SIZE:
-            
-#             # SELECTION
-#             parent1, parent2 = random.choices(population[:10], k=2)  # Select parents from the top 10 individuals
-            
-#             # CROSSOVER
-#             child1 = order_crossover(parent1, parent2)
-            
-#             ## MUTATION
-#             child1 = mutate(child1, MUTATION_PROBABILITY)
-            
-#             new_population.append(child1)
-            
-    
-#         print('generation: ', generation)
-#         population = new_population
-
-
-
+    # Penalidade baseada em porcentagem + crescimento exponencial
+    return weight * (excess_ratio ** 2) * max_autonomy

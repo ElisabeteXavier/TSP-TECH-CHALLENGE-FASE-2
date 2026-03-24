@@ -1,6 +1,11 @@
 
-
-
+"""
+Dados do contexto hospitalar para o TSP médico.
+- priorities: urgência (0=crítico, 1=regular, 2=insumo).
+- demands: carga em unidades que cada entrega consome do veículo.
+- VEHICLE_CAPACITY: capacidade máxima do veículo por viagem.
+  Restrição: soma(demands dos pontos da rota) <= VEHICLE_CAPACITY.
+"""
 
 priorities = {
     0: 0,  # HOSPITAL
@@ -18,5 +23,16 @@ priorities = {
     12: 0, # 🔴 Crítico
     13: 2, # 🟢 Insumo administrativo
     14: 1, # 🟡 Medicamento regular
-    15: 0  # 🔴 Crítico
+    15: 0,  # 🔴 Crítico
 }
+
+# Carga (unidades) que cada ponto consome na entrega. Hospital = 0.
+# Críticos = 3, regular = 2, insumo = 1 (exemplo).
+demands = {
+    0: 0, 1: 1, 2: 2, 3: 3, 4: 1, 5: 2, 6: 3, 7: 1, 8: 2, 9: 3,
+    10: 1, 11: 2, 12: 3, 13: 1, 14: 2, 15: 3,
+}
+
+# Capacidade máxima do veículo por viagem. Rota válida se soma(demands da rota) <= este valor.
+VEHICLE_CAPACITY = 15
+VEHICLE_MAX_AUTONOMY = 1500
