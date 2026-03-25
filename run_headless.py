@@ -179,46 +179,17 @@ def run_ga_headless(config: Dict[str, Any]) -> Dict[str, Any]:
         if generation <= 3 or generation % 10 == 0 or generation == n_generations:
             print(f"Geração {generation:3d}: melhor fitness = {best_fitness:.4f}")
 
-    # # Componentes estruturados do resultado (para LLM e relatório)
-    # best_route_ids = [city_to_id_map[c] for c in best_solution]
-    # total_distance = float(
-    #     calculate_total_distance(
-    #         best_solution,
-    #         hospital_coords,
-    #         city_to_id_map=city_to_id_map,
-    #         distance_matrix=distance_matrix,
-    #     )
-    # )
-    # priority_penalty = float(calculate_priority_penalty(best_solution, priorities, city_to_id_map, hospital_coords))
-    # capacity_penalty = float(
-    #     calculate_capacity_penalty(best_solution, demands, city_to_id_map, hospital_coords, vehicle_capacity)
-    # )
-
-    # result = {
-    #     "config_used": cfg,
-    #     "best_route": best_route_ids,
-    #     "metrics": {
-    #         "total_distance": total_distance,
-    #         "priority_penalty": priority_penalty,
-    #         "capacity_penalty": capacity_penalty,
-    #         "fitness_final": float(best_fitness),
-    #     },
-    #     "history": {
-    #         "best_fitness_by_generation": best_fitness_history,
-    #     },
-    # }
-
     evaluated = calculate_fitness(
     path=best_solution,
     priorities=priorities,
     city_to_id_map=city_to_id_map,
     hospital_coords=hospital_coords,
-    n_vehicles=n_vehicles, 
     distance_matrix=distance_matrix,
     demands=demands,
     vehicle_capacity=vehicle_capacity,
     vehicle_max_autonomy = cfg["vehicle_max_autonomy"],
     weights=weights,
+    n_vehicles=n_vehicles, 
     ) 
 
    
