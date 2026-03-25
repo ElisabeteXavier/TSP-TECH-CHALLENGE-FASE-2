@@ -423,15 +423,14 @@ def calculate_fitness(
             dist = calculate_total_distance(
             route, hospital_coords,
             city_to_id_map=city_to_id_map,
-            distance_matrix=distance_matrix
-        )
+            distance_matrix=distance_matrix)
 
-        if vehicle_max_autonomy is not None:
-            autonomy_penalty = calculate_autonomy_penalty(
-                dist,
-                vehicle_max_autonomy
-            )
-            total_autonomy_penalty += autonomy_penalty
+            if vehicle_max_autonomy is not None:
+                autonomy_penalty = calculate_autonomy_penalty(
+                    dist,
+                    vehicle_max_autonomy
+                )
+                total_autonomy_penalty += autonomy_penalty
 
             prio = calculate_priority_penalty(route, priorities, city_to_id_map, hospital_coords)
             
